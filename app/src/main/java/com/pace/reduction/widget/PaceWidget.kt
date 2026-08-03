@@ -11,6 +11,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.DpSize
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
+import androidx.glance.ImageProvider
+import androidx.glance.Image
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -24,6 +27,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
@@ -31,6 +35,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -46,6 +51,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 
+private val Ink = ColorProvider(Color(0xFF23402D), Color(0xFF0F1F16))
+private val Surface = ColorProvider(Color(0xFFFFFDF7), Color(0xFFE7E2D8))
+private val OnDark = ColorProvider(Color.White, Color(0xFFF2F6F3))
+private val Muted = ColorProvider(Color(0xFFC5DBCB), Color(0xFF9FBCA8))
+private val TrackDim = ColorProvider(Color(0x33FFFFFF), Color(0x28FFFFFF))
+
 class PaceWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Responsive(
         setOf(
@@ -59,7 +70,7 @@ class PaceWidget : GlanceAppWidget() {
         val initialSnapshot = context.widgetSnapshotDataStore.data.first()
         provideContent {
             val snapshot by context.widgetSnapshotDataStore.data.collectAsState(initialSnapshot)
-            PaceWidgetContent(context, snapshot, LocalSize.current)
+            GlanceTheme { PaceWidgetContent(context, snapshot, LocalSize.current) }
         }
     }
 }
@@ -71,102 +82,110 @@ class PaceWidgetReceiver : GlanceAppWidgetReceiver() {
 @Composable
 private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: DpSize) {
     val configured = snapshot.localDate.isNotBlank()
-    val title = if (configured) {
-        context.getString(R.string.widget_count, snapshot.countToday, snapshot.ceiling)
-    } else {
-        context.getString(R.string.widget_setup_title)
-    }
-    val status = if (configured) widgetStatus(context, snapshot) else context.getString(R.string.widget_setup_body)
-    val canUndo = snapshot.undoLogId.isNotBlank() && snapshot.undoExpiryEpochMs > System.currentTimeMillis()
     val compact = size.width < 170.dp || size.height < 95.dp
     val wide = size.width >= 280.dp
-    val toolkitIntent = Intent(context, MainActivity::class.java)
-        .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_TOOLKIT)
+    val canUndo = snapshot.undoLogId.isNotBlank() && snapshot.undoExpiryEpochMs > System.currentTimeMillis()
+    val coachIntent = Intent(context, MainActivity::class.java)
+        .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_COACH)
 
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(ColorProvider(Color(0xFF385B45), Color(0xFF20372A)))
-            .cornerRadius(22.dp)
+            .background(ColorProvider(Color(0xFF3F6A4E), Color(0xFF1E3A29)))
+            .cornerRadius(24.dp)
             .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
-            .padding(16.dp),
-        verticalAlignment = Alignment.Vertical.CenterVertically,
+            .padding(horizontal = HORIZONTAL_PADDING, vertical = 12.dp),
     ) {
-        Text(
-            text = context.getString(R.string.app_name),
-            style = TextStyle(
-                color = ColorProvider(Color(0xFFD9E8DC), Color(0xFFAECFB5)),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-            ),
-        )
-        Spacer(GlanceModifier.height(if (compact) 2.dp else 6.dp))
-        Text(
-            text = title,
-            style = TextStyle(
-                color = ColorProvider(Color.White, Color.White),
-                fontSize = if (compact) 17.sp else 22.sp,
-                fontWeight = FontWeight.Bold,
-            ),
-        )
-        if (!compact) {
-            Text(
-                text = status,
-                maxLines = 2,
-                style = TextStyle(
-                    color = ColorProvider(Color(0xFFEAF2EB), Color(0xFFD9E8DC)),
-                    fontSize = 13.sp,
-                ),
-            )
-            if (wide) {
-                Text(
-                    text = snapshot.safeMessage,
-                    maxLines = 1,
-                    style = TextStyle(
-                        color = ColorProvider(Color(0xFFD9E8DC), Color(0xFFAECFB5)),
-                        fontSize = 11.sp,
-                    ),
-                )
-            }
-        } else if (snapshot.lastActiveLogEpochMs > 0) {
-            val gapMinutes = ((System.currentTimeMillis() - snapshot.lastActiveLogEpochMs) / 60_000).coerceAtLeast(0)
-            Text(
-                text = context.getString(R.string.widget_gap_minutes, gapMinutes),
-                style = TextStyle(
-                    color = ColorProvider(Color(0xFFEAF2EB), Color(0xFFD9E8DC)),
-                    fontSize = 11.sp,
-                ),
-            )
+        if (!configured) {
+            SetupState(context)
+            return@Column
         }
-        Spacer(GlanceModifier.defaultWeight())
-        if (configured) {
-            Row(modifier = GlanceModifier.fillMaxWidth()) {
-                if (compact) {
-                    WidgetAction(
-                        text = context.getString(R.string.have_craving),
-                        modifier = GlanceModifier.defaultWeight(),
-                        onClick = actionStartActivity(toolkitIntent),
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
+            Column(modifier = GlanceModifier.defaultWeight()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = snapshot.countToday.toString(),
+                        style = TextStyle(
+                            color = OnDark,
+                            fontSize = if (compact) 26.sp else 34.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
                     )
-                } else {
-                    WidgetAction(
-                        text = context.getString(R.string.widget_log),
-                        modifier = GlanceModifier.defaultWeight(),
-                        onClick = actionRunCallback<WidgetLogAction>(),
+                    Spacer(GlanceModifier.width(4.dp))
+                    Text(
+                        text = "/ ${snapshot.ceiling}",
+                        style = TextStyle(
+                            color = Muted,
+                            fontSize = if (compact) 13.sp else 16.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
                     )
                 }
-                if (canUndo && !compact) {
+                Text(
+                    text = widgetStatus(context, snapshot),
+                    maxLines = if (compact) 1 else 2,
+                    style = TextStyle(color = OnDark, fontSize = if (compact) 11.sp else 13.sp),
+                )
+            }
+            if (!compact && snapshot.latestBadgeId.isNotBlank()) {
+                BadgeChip(context, snapshot)
+            }
+        }
+
+        Spacer(GlanceModifier.height(if (compact) 6.dp else 9.dp))
+        CeilingBar(count = snapshot.countToday, ceiling = snapshot.ceiling, size = size)
+
+        if (!compact) {
+            Spacer(GlanceModifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (snapshot.minimumGapMinutes > 0) {
+                    Text(
+                        text = context.getString(R.string.widget_gap_minutes, snapshot.minimumGapMinutes),
+                        modifier = GlanceModifier
+                            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
+                            .cornerRadius(10.dp)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = TextStyle(color = OnDark, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                    )
                     Spacer(GlanceModifier.width(8.dp))
+                }
+                Text(
+                    text = snapshot.safeMessage,
+                    maxLines = if (wide) 1 else 2,
+                    style = TextStyle(color = Muted, fontSize = 11.sp),
+                )
+            }
+        }
+
+        Spacer(GlanceModifier.defaultWeight())
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            if (compact) {
+                WidgetAction(
+                    text = context.getString(R.string.widget_log),
+                    modifier = GlanceModifier.defaultWeight(),
+                    onClick = actionRunCallback<WidgetLogAction>(),
+                )
+            } else {
+                WidgetAction(
+                    text = context.getString(R.string.widget_log),
+                    modifier = GlanceModifier.defaultWeight(),
+                    onClick = actionRunCallback<WidgetLogAction>(),
+                )
+                Spacer(GlanceModifier.width(8.dp))
+                if (canUndo) {
                     WidgetAction(
                         text = context.getString(R.string.undo),
                         modifier = GlanceModifier.defaultWeight(),
                         onClick = actionRunCallback<WidgetUndoAction>(),
+                        subdued = true,
                     )
-                } else if (!compact) {
-                    Spacer(GlanceModifier.width(8.dp))
+                } else {
                     WidgetAction(
-                        text = context.getString(R.string.pause_five),
+                        text = context.getString(R.string.have_craving),
                         modifier = GlanceModifier.defaultWeight(),
-                        onClick = actionStartActivity(toolkitIntent),
+                        onClick = actionStartActivity(coachIntent),
+                        subdued = true,
                     )
                 }
             }
@@ -175,25 +194,99 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
 }
 
 @Composable
+private fun SetupState(context: Context) {
+    Column(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.Vertical.CenterVertically) {
+        Text(
+            text = context.getString(R.string.widget_setup_title),
+            style = TextStyle(color = OnDark, fontSize = 17.sp, fontWeight = FontWeight.Bold),
+        )
+        Text(
+            text = context.getString(R.string.widget_setup_body),
+            style = TextStyle(color = Muted, fontSize = 12.sp),
+        )
+    }
+}
+
+/**
+ * Ceiling meter: a lit bar for what's logged over a dim track for the room left.
+ *
+ * Widths come from the real widget size rather than layout weights, because Glance only offers
+ * equal weights, which cannot express "5 of 10".
+ */
+@Composable
+private fun CeilingBar(count: Int, ceiling: Int, size: DpSize) {
+    val fraction = if (ceiling > 0) (count.toFloat() / ceiling).coerceIn(0f, 1f) else 0f
+    val trackWidth = (size.width - HORIZONTAL_PADDING * 2).coerceAtLeast(40.dp)
+    val litWidth = trackWidth * fraction
+    val over = count > ceiling
+
+    Box(
+        modifier = GlanceModifier
+            .width(trackWidth)
+            .height(6.dp)
+            .cornerRadius(3.dp)
+            .background(TrackDim),
+    ) {
+        if (fraction > 0f) {
+            Box(
+                modifier = GlanceModifier
+                    .width(litWidth)
+                    .height(6.dp)
+                    .cornerRadius(3.dp)
+                    .background(
+                        if (over) ColorProvider(Color(0xFFE5A3A3), Color(0xFFC98686)) else Surface,
+                    ),
+            ) {}
+        }
+    }
+}
+
+@Composable
+private fun BadgeChip(context: Context, snapshot: WidgetSnapshot) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = GlanceModifier
+            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
+            .cornerRadius(14.dp)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+    ) {
+        Image(
+            provider = ImageProvider(R.drawable.ic_badge_widget),
+            contentDescription = null,
+            modifier = GlanceModifier.size(14.dp),
+        )
+        Spacer(GlanceModifier.width(5.dp))
+        Text(
+            text = snapshot.badgeCount.toString(),
+            style = TextStyle(color = OnDark, fontSize = 12.sp, fontWeight = FontWeight.Bold),
+        )
+    }
+}
+
+@Composable
 private fun WidgetAction(
     text: String,
     modifier: GlanceModifier,
     onClick: androidx.glance.action.Action,
+    subdued: Boolean = false,
 ) {
     Text(
         text = text,
+        maxLines = 1,
         modifier = modifier
-            .background(ColorProvider(Color(0xFFFFFDF7), Color(0xFFE7E2D8)))
-            .cornerRadius(16.dp)
+            .background(if (subdued) ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)) else Surface)
+            .cornerRadius(18.dp)
             .clickable(onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         style = TextStyle(
-            color = ColorProvider(Color(0xFF23402D), Color(0xFF173824)),
+            color = if (subdued) OnDark else Ink,
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
         ),
     )
 }
+
+private val HORIZONTAL_PADDING = 14.dp
 
 private fun widgetStatus(context: Context, snapshot: WidgetSnapshot): String = when (snapshot.state) {
     WidgetStateProto.WIDGET_STATE_SPACING -> context.getString(

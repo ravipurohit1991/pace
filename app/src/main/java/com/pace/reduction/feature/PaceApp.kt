@@ -550,6 +550,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
     var hapticsEnabled by rememberSaveable(settings.hapticsEnabled) { mutableStateOf(settings.hapticsEnabled) }
     var quitMode by rememberSaveable(settings.quitMode) { mutableStateOf(settings.quitMode) }
     var quitDate by rememberSaveable(settings.quitDate) { mutableStateOf(settings.quitDate?.toString() ?: "") }
+    var adaptiveSpacing by rememberSaveable(settings.adaptiveSpacingEnabled) { mutableStateOf(settings.adaptiveSpacingEnabled) }
+    var adaptiveStep by rememberSaveable(settings.adaptiveSpacingStepMinutes) { mutableStateOf(settings.adaptiveSpacingStepMinutes.toString()) }
+    var adaptiveInterval by rememberSaveable(settings.adaptiveSpacingIntervalDays) { mutableStateOf(settings.adaptiveSpacingIntervalDays.toString()) }
+    var adaptiveMax by rememberSaveable(settings.adaptiveSpacingMaxMinutes) { mutableStateOf(settings.adaptiveSpacingMaxMinutes.toString()) }
 
     val newCeiling = ceiling.toIntOrNull()
     val parsedWake = parseTime(wake)
@@ -562,7 +566,14 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
         (!weekendWakeEnabled || parsedWeekendWake != null) && reductionStep.toIntOrNull() in 1..5 &&
         reviewInterval.toIntOrNull() in 7..28 && cigarettesPerPack.toIntOrNull() in 1..100 &&
         (pricePerPack.toDoubleOrNull() ?: 0.0) >= 0.0 && (rewardTarget.toDoubleOrNull() ?: 0.0) >= 0.0 &&
-        currencyCode.length == 3 && (!quitMode || quitDate.isBlank() || parsedQuitDate != null)
+        currencyCode.length == 3 && (!quitMode || quitDate.isBlank() || parsedQuitDate != null) &&
+        (
+            !adaptiveSpacing || (
+                adaptiveStep.toIntOrNull() in 5..60 &&
+                    adaptiveInterval.toIntOrNull() in 1..30 &&
+                    adaptiveMax.toIntOrNull() in 30..720
+                )
+            )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -590,6 +601,50 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
             }
         }
         item { PlanNumberField(R.string.spacing_label, gap, { gap = it }, 15..360) }
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.adaptive_spacing_title),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(
+                                R.string.adaptive_spacing_body,
+                                adaptiveInterval.toIntOrNull() ?: settings.adaptiveSpacingIntervalDays,
+                                adaptiveStep.toIntOrNull() ?: settings.adaptiveSpacingStepMinutes,
+                                adaptiveMax.toIntOrNull() ?: settings.adaptiveSpacingMaxMinutes,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = adaptiveSpacing, onCheckedChange = { adaptiveSpacing = it })
+                }
+                uiState.spacing?.takeIf { adaptiveSpacing }?.let { spacing ->
+                    Text(
+                        text = if (spacing.atMaximum) {
+                            stringResource(R.string.adaptive_spacing_max_reached, spacing.effectiveMinutes)
+                        } else {
+                            stringResource(
+                                R.string.adaptive_spacing_now,
+                                spacing.effectiveMinutes,
+                                spacing.steadyDays,
+                                spacing.steadyDaysNeeded,
+                            )
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (adaptiveSpacing) {
+                    PlanNumberField(R.string.adaptive_spacing_step, adaptiveStep, { adaptiveStep = it }, 5..60)
+                    PlanNumberField(R.string.adaptive_spacing_interval, adaptiveInterval, { adaptiveInterval = it }, 1..30)
+                    PlanNumberField(R.string.adaptive_spacing_max, adaptiveMax, { adaptiveMax = it }, 30..720)
+                }
+            }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TimeField(R.string.wake_label, wake, { wake = it }, Modifier.weight(1f))
@@ -791,6 +846,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                             rewardTarget = rewardTarget.toDoubleOrNull() ?: 0.0,
                             quitMode = quitMode,
                             quitDate = parsedQuitDate,
+                            adaptiveSpacingEnabled = adaptiveSpacing,
+                            adaptiveSpacingStepMinutes = adaptiveStep.toIntOrNull() ?: settings.adaptiveSpacingStepMinutes,
+                            adaptiveSpacingIntervalDays = adaptiveInterval.toIntOrNull() ?: settings.adaptiveSpacingIntervalDays,
+                            adaptiveSpacingMaxMinutes = adaptiveMax.toIntOrNull() ?: settings.adaptiveSpacingMaxMinutes,
                         ),
                     )
                 },
@@ -951,39 +1010,31 @@ private fun ProgressScreen(uiState: PaceUiState) {
         }
         item {
             SectionCard {
-                Text(stringResource(R.string.badges_title), style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.badges_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        stringResource(R.string.badges_earned, uiState.achievements.size, ALL_BADGE_IDS.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                BadgeGrid(uiState.achievements)
                 if (uiState.achievements.isEmpty()) {
                     Text(
                         stringResource(R.string.no_badges_yet),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    uiState.achievements.forEach { achievement ->
-                        Text(badgeTitle(achievement.badgeId), fontWeight = FontWeight.SemiBold)
-                        Text(achievement.evidence, style = MaterialTheme.typography.bodySmall)
-                        HorizontalDivider()
-                    }
                 }
             }
         }
     }
 }
-
-@Composable
-private fun badgeTitle(id: String): String = stringResource(
-    when (id) {
-        "first_pause" -> R.string.badge_first_pause
-        "honest_week" -> R.string.badge_honest_week
-        "space_maker" -> R.string.badge_space_maker
-        "morning_reclaimed" -> R.string.badge_morning_reclaimed
-        "steady_three" -> R.string.badge_steady_three
-        "tool_builder" -> R.string.badge_tool_builder
-        "ten_avoided" -> R.string.badge_ten_avoided
-        "reward_step" -> R.string.badge_reward_step
-        else -> R.string.badge_progress
-    },
-)
 
 @Composable
 internal fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {

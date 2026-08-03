@@ -10,8 +10,10 @@ import com.pace.reduction.data.repository.PaceRepository
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.ProgressMetrics
+import com.pace.reduction.domain.AdaptiveSpacing
 import com.pace.reduction.domain.QuitMetrics
 import com.pace.reduction.domain.QuitProgress
+import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
 import com.pace.reduction.domain.model.AiSettings
@@ -51,6 +53,7 @@ data class PaceUiState(
     val urgeSessions: List<UrgeSession> = emptyList(),
     val progress: ProgressMetrics? = null,
     val quit: QuitMetrics? = null,
+    val spacing: SpacingProgress? = null,
     val achievements: List<Achievement> = emptyList(),
     val triggerPlaces: List<TriggerPlace> = emptyList(),
     val activePause: ActivePause = ActivePause(),
@@ -144,7 +147,6 @@ class PaceViewModel(
         aiState,
     ) { core, achievements, triggerPlaces, activePause, ai ->
         val zone = ZoneId.systemDefault()
-        val today = PacingCalculator.calculate(core.now, zone, core.settings, core.logs)
         val progress = ProgressCalculator.calculate(
             today = core.now.atZone(zone).toLocalDate(),
             zoneId = zone,
@@ -154,6 +156,14 @@ class PaceViewModel(
             pricePerPack = core.settings.pricePerPack,
             cigarettesPerPack = core.settings.cigarettesPerPack,
             rewardTarget = core.settings.rewardTarget,
+        )
+        // Pacing runs on the adaptive gap so the app and the widget agree on the next window.
+        val spacing = AdaptiveSpacing.progress(core.settings, progress.days)
+        val today = PacingCalculator.calculate(
+            now = core.now,
+            zoneId = zone,
+            settings = core.settings.copy(minimumGapMinutes = spacing.effectiveMinutes),
+            logs = core.logs,
         )
         val quit = QuitProgress.calculate(
             now = core.now,
@@ -173,6 +183,7 @@ class PaceViewModel(
             urgeSessions = core.sessions,
             progress = progress,
             quit = quit,
+            spacing = spacing,
             achievements = achievements,
             triggerPlaces = triggerPlaces,
             activePause = activePause,
@@ -288,8 +299,9 @@ class PaceViewModel(
         if (prompt.isEmpty() || _coachState.value.busy) return
         coachJob?.cancel()
         coachJob = viewModelScope.launch {
+            // Persist first so the service replays this turn along with the prior conversation.
             repository.appendCoachMessage("user", prompt)
-            streamReply { coachService.chatStream(prompt) }
+            streamReply { coachService.chatStream() }
         }
     }
 
@@ -351,6 +363,18 @@ class PaceViewModel(
     fun saveAiSettings(enabled: Boolean, apiKey: String, model: String, proactiveNudges: Boolean) {
         viewModelScope.launch {
             repository.saveAiSettings(enabled, apiKey, model, proactiveNudges)
+            _events.emit(PaceEvent.CoachSettingsSaved)
+        }
+    }
+
+    fun saveCoachBehaviour(
+        systemPrompt: String,
+        includeStats: Boolean,
+        checkupsEnabled: Boolean,
+        checkupIntervalMinutes: Int,
+    ) {
+        viewModelScope.launch {
+            repository.saveCoachBehaviour(systemPrompt, includeStats, checkupsEnabled, checkupIntervalMinutes)
             _events.emit(PaceEvent.CoachSettingsSaved)
         }
     }

@@ -1,0 +1,22 @@
+# Copy to `local.properties` (git-ignored) for a personal build.
+# Every key below is optional - omit them all and Pace builds as a normal empty app.
+
+# Android SDK location. Android Studio writes this for you.
+sdk.dir=/path/to/Android/Sdk
+
+# --- Optional: pre-load the AI coach so a fresh install needs no setup ---
+# Create a key at https://ollama.com/settings/keys. Never commit the real value.
+pace.ollamaApiKey=
+pace.ollamaModel=gpt-oss:120b
+
+# --- Optional: carry over history from a previous tracker ---
+# Seeded once on first launch and recorded in preferences, so reinstalling
+# over existing data never duplicates logs.
+pace.seedYesterday=0
+pace.seedToday=0
+# Time of the most recent cigarette today, 24-hour HH:mm. The seeded day is
+# spread across waking hours and ends exactly here.
+pace.seedLastTime=
+# Starting plan. Spacing grows on its own as steady days accumulate.
+pace.seedCeiling=0
+pace.seedSpacing=0

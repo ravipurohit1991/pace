@@ -39,6 +39,11 @@ data class PlanSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val quitMode: Boolean = false,
     val quitDate: LocalDate? = null,
+    /** When on, the effective minimum gap grows as steady days accumulate. */
+    val adaptiveSpacingEnabled: Boolean = false,
+    val adaptiveSpacingStepMinutes: Int = 15,
+    val adaptiveSpacingIntervalDays: Int = 7,
+    val adaptiveSpacingMaxMinutes: Int = 240,
 )
 
 /** Ollama Cloud coach configuration. The key is held encrypted at rest. */
@@ -47,6 +52,12 @@ data class AiSettings(
     val apiKey: String = "",
     val model: String = "",
     val proactiveNudges: Boolean = true,
+    /** Empty means "use the built-in persona". */
+    val systemPrompt: String = "",
+    /** Whether the grounded local figures are attached to each request. */
+    val includeStats: Boolean = true,
+    val checkupsEnabled: Boolean = false,
+    val checkupIntervalMinutes: Int = 180,
 ) {
     val isReady: Boolean get() = enabled && apiKey.isNotBlank() && model.isNotBlank()
 }

@@ -1,4 +1,4 @@
-<!-- In-app/legacy mark: the pacing ring around a pause, matching the launcher icon. -->
+<!-- Themed-icon layer: same mark, single colour, tinted by the launcher. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -6,17 +6,14 @@
     android:viewportHeight="108">
 
     <path
-        android:fillColor="#385B45"
-        android:pathData="M18,0h72a18,18 0,0 1,18 18v72a18,18 0,0 1,-18 18h-72a18,18 0,0 1,-18 -18v-72a18,18 0,0 1,18 -18z" />
-    <path
         android:pathData="M35.62,72.38 A26,26 0 1 1 72.38,72.38"
-        android:strokeColor="#FFFDF7"
+        android:strokeColor="#FFFFFFFF"
         android:strokeWidth="8.5"
         android:strokeLineCap="round" />
     <path
-        android:fillColor="#FFFDF7"
+        android:fillColor="#FFFFFFFF"
         android:pathData="M46.2,44.5h3.4a2.6,2.6 0,0 1,2.6 2.6v14.8a2.6,2.6 0,0 1,-2.6 2.6h-3.4a2.6,2.6 0,0 1,-2.6 -2.6v-14.8a2.6,2.6 0,0 1,2.6 -2.6z" />
     <path
-        android:fillColor="#FFFDF7"
+        android:fillColor="#FFFFFFFF"
         android:pathData="M58.4,44.5h3.4a2.6,2.6 0,0 1,2.6 2.6v14.8a2.6,2.6 0,0 1,-2.6 2.6h-3.4a2.6,2.6 0,0 1,-2.6 -2.6v-14.8a2.6,2.6 0,0 1,2.6 -2.6z" />
 </vector>

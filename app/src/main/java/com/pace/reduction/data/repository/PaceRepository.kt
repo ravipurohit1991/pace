@@ -12,6 +12,7 @@ import com.pace.reduction.core.location.TriggerGeofenceManager
 import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.security.SecretVault
 import com.pace.reduction.data.db.CoachMessageEntity
+import com.pace.reduction.data.seed.ProvisioningSeeder
 import com.pace.reduction.domain.model.AiSettings
 import com.pace.reduction.domain.model.CoachMessage
 import com.google.protobuf.ByteString
@@ -43,10 +44,13 @@ import com.pace.reduction.domain.model.ThemeMode
 import com.pace.reduction.domain.model.TriggerPlace
 import com.pace.reduction.domain.model.UrgeSession
 import com.pace.reduction.domain.PacingCalculator
+import com.pace.reduction.domain.AdaptiveSpacing
 import com.pace.reduction.domain.BadgeEngine
 import com.pace.reduction.domain.CoachContext
+import com.pace.reduction.domain.DailyProgress
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.QuitProgress
+import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.WidgetTapGuard
 import com.pace.reduction.proto.CoachingToneProto
 import com.pace.reduction.proto.PacePreferences
@@ -112,6 +116,10 @@ class PaceRepository(
             apiKey = SecretVault.decrypt(preferences.ollamaApiKeyCiphertext.toByteArray()),
             model = preferences.ollamaModel.ifBlank { OllamaClient.DEFAULT_MODEL },
             proactiveNudges = preferences.ollamaProactiveNudges,
+            systemPrompt = preferences.ollamaSystemPrompt,
+            includeStats = !preferences.ollamaOmitStats,
+            checkupsEnabled = preferences.ollamaCheckupsEnabled,
+            checkupIntervalMinutes = preferences.ollamaCheckupIntervalMinutes.takeIf { it > 0 } ?: 180,
         )
     }
 
@@ -410,6 +418,58 @@ class PaceRepository(
         }
     }
 
+    /** Coach behaviour the user edits from the Coach screen. */
+    suspend fun saveCoachBehaviour(
+        systemPrompt: String,
+        includeStats: Boolean,
+        checkupsEnabled: Boolean,
+        checkupIntervalMinutes: Int,
+    ) {
+        preferencesStore.updateData { current ->
+            current.toBuilder()
+                .setOllamaSystemPrompt(systemPrompt.trim().take(MAX_SYSTEM_PROMPT_CHARS))
+                .setOllamaOmitStats(!includeStats)
+                .setOllamaCheckupsEnabled(checkupsEnabled)
+                .setOllamaCheckupIntervalMinutes(checkupIntervalMinutes.coerceIn(30, 24 * 60))
+                .build()
+        }
+    }
+
+    /**
+     * True when an unprompted check-in is due: enabled, past the chosen interval, outside quiet
+     * hours, and within the shared notification budget.
+     */
+    suspend fun claimCheckup(): Boolean {
+        val ai = aiSettings.first()
+        if (!ai.isReady || !ai.checkupsEnabled) return false
+        val plan = settings.first()
+        if (!plan.onboardingCompleted) return false
+
+        val now = clock.instant()
+        val zone = zoneProvider()
+        val date = now.atZone(zone).toLocalDate()
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val logs = dao.activeLogsBetween(start, end)
+        val quietHours = PacingCalculator
+            .calculate(now, zone, effectivePlan(plan), logs.map { it.toDomain() })
+            .status is PacingStatus.Rest
+        if (quietHours) return false
+
+        var claimed = false
+        preferencesStore.updateData { current ->
+            val elapsed = now.toEpochMilli() - current.lastCheckupEpochMs
+            val due = current.lastCheckupEpochMs <= 0L ||
+                elapsed >= ai.checkupIntervalMinutes * 60_000L
+            val dismissed = now.toEpochMilli() < current.notificationDismissedUntilEpochMs
+            if (!due || dismissed) current else {
+                claimed = true
+                current.toBuilder().setLastCheckupEpochMs(now.toEpochMilli()).build()
+            }
+        }
+        return claimed
+    }
+
     suspend fun clearApiKey() {
         preferencesStore.updateData { current ->
             current.toBuilder()
@@ -446,7 +506,7 @@ class PaceRepository(
         val plan = settings.first()
         val logs = dao.allLogs().map { it.toDomain() }
         val sessions = dao.allUrgeSessions().map { it.toDomain() }
-        val today = PacingCalculator.calculate(now, zone, plan, logs)
+        val today = PacingCalculator.calculate(now, zone, effectivePlan(plan), logs)
         val quit = QuitProgress.calculate(
             now = now,
             zoneId = zone,
@@ -478,6 +538,95 @@ class PaceRepository(
             personalReason = plan.personalReason,
             tone = plan.coachingTone.name,
         )
+    }
+
+    /**
+     * One-time import of an owner's pre-existing history and key into a private build.
+     * Guarded by a preference flag so reinstalling over existing data never duplicates logs.
+     */
+    suspend fun applyProvisioning(
+        apiKey: String,
+        model: String,
+        yesterdayCount: Int,
+        todayCount: Int,
+        lastTimeToday: java.time.LocalTime?,
+        ceiling: Int,
+        spacingMinutes: Int,
+    ) {
+        if (preferencesStore.data.first().provisioningSeedApplied) return
+
+        val zone = zoneProvider()
+        val today = clock.instant().atZone(zone).toLocalDate()
+        val yesterday = today.minusDays(1)
+        val basePlan = settings.first()
+        val plan = basePlan.copy(
+            onboardingCompleted = true,
+            dailyCeiling = ceiling.takeIf { it > 0 } ?: basePlan.dailyCeiling,
+            baselinePerDay = maxOf(yesterdayCount, ceiling, basePlan.baselinePerDay),
+            minimumGapMinutes = spacingMinutes.takeIf { it > 0 } ?: basePlan.minimumGapMinutes,
+            adaptiveSpacingEnabled = true,
+        )
+
+        val dayStart = java.time.LocalTime.of(plan.wakeMinutes / 60, plan.wakeMinutes % 60)
+        val entries = buildList {
+            ProvisioningSeeder.timesFor(yesterdayCount, yesterday, null, dayStart)
+                .forEach { add(yesterday.atTime(it)) }
+            ProvisioningSeeder.timesFor(todayCount, today, lastTimeToday, dayStart)
+                .forEach { add(today.atTime(it)) }
+        }
+
+        database.withTransaction {
+            listOf(yesterday, today).forEach { date ->
+                dao.insertDailySnapshot(
+                    DailyPlanSnapshotEntity(
+                        localDate = date.toString(),
+                        zoneId = zone.id,
+                        baseline = plan.baselinePerDay,
+                        ceiling = plan.dailyCeiling,
+                        minimumGapMinutes = plan.minimumGapMinutes,
+                        wakeMinutes = plan.wakeMinutes,
+                        sleepMinutes = plan.sleepMinutes,
+                        morningHoldMinutes = plan.morningHoldMinutes,
+                        flexibleDay = plan.flexibleDay,
+                        createdAtEpochMs = date.atStartOfDay(zone).toInstant().toEpochMilli(),
+                    ),
+                )
+            }
+            entries.forEach { moment ->
+                val epochMs = moment.atZone(zone).toInstant().toEpochMilli()
+                dao.insertLog(
+                    CigaretteLogEntity(
+                        id = UUID.randomUUID().toString(),
+                        occurredAtEpochMs = epochMs,
+                        recordedAtEpochMs = epochMs,
+                        source = "IMPORT",
+                        note = null,
+                        reversedAtEpochMs = null,
+                        reversalReason = null,
+                    ),
+                )
+            }
+        }
+
+        val trimmedKey = apiKey.trim().take(MAX_API_KEY_CHARS)
+        preferencesStore.updateData { current ->
+            current.withPlan(plan).toBuilder()
+                .setOnboardingCompleted(true)
+                .setProvisioningSeedApplied(true)
+                .apply {
+                    if (trimmedKey.isNotEmpty()) {
+                        ollamaApiKeyCiphertext = ByteString.copyFrom(SecretVault.encrypt(trimmedKey))
+                        ollamaEnabled = true
+                        ollamaProactiveNudges = true
+                        ollamaCheckupsEnabled = true
+                        ollamaCheckupIntervalMinutes = 180
+                        ollamaModel = model.trim().ifBlank { OllamaClient.DEFAULT_MODEL }
+                    }
+                }
+                .build()
+        }
+        evaluateAchievements()
+        refreshWidgetSnapshot()
     }
 
     suspend fun startExternalBreak(gameId: String): String {
@@ -624,7 +773,7 @@ class PaceRepository(
         val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val plan = settings.first()
         val logs = dao.activeLogsBetween(start, end).map { it.toDomain() }
-        return PacingCalculator.calculate(now, zone, plan, logs).status is PacingStatus.Rest
+        return PacingCalculator.calculate(now, zone, effectivePlan(plan), logs).status is PacingStatus.Rest
     }
 
     private fun validateBackup(backup: PaceBackup) {
@@ -703,7 +852,7 @@ class PaceRepository(
         val summary = PacingCalculator.calculate(
             now = now,
             zoneId = zone,
-            settings = plan,
+            settings = effectivePlan(plan),
             logs = logs.map { it.toDomain() },
         )
         val (widgetState, stateUntil) = when (val status = summary.status) {
@@ -720,8 +869,12 @@ class PaceRepository(
             PacingStatus.CeilingReached -> context.getString(R.string.widget_message_ceiling)
             else -> context.getString(R.string.widget_message_default)
         }
+        val badges = dao.allAchievements()
         widgetStore.updateData {
             WidgetSnapshot.newBuilder()
+                .setLatestBadgeId(badges.maxByOrNull { it.unlockedAtEpochMs }?.badgeId.orEmpty())
+                .setBadgeCount(badges.size)
+                .setMinimumGapMinutes(effectivePlan(plan).minimumGapMinutes)
                 .setGeneratedAtEpochMs(now.toEpochMilli())
                 .setLocalDate(date.toString())
                 .setCountToday(logs.size)
@@ -746,7 +899,7 @@ class PaceRepository(
         val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
         val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val logs = dao.activeLogsBetween(start, end)
-        val quietHours = PacingCalculator.calculate(now, zone, plan, logs.map { it.toDomain() }).status is PacingStatus.Rest
+        val quietHours = PacingCalculator.calculate(now, zone, effectivePlan(plan), logs.map { it.toDomain() }).status is PacingStatus.Rest
         val latestLog = logs.lastOrNull()?.occurredAtEpochMs ?: 0L
         var claimed = false
         preferencesStore.updateData { current ->
@@ -789,7 +942,7 @@ class PaceRepository(
         val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
         val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val logs = dao.activeLogsBetween(start, end)
-        val summary = PacingCalculator.calculate(now, zone, plan, logs.map { it.toDomain() })
+        val summary = PacingCalculator.calculate(now, zone, effectivePlan(plan), logs.map { it.toDomain() })
 
         val minutesToWindow = (summary.status as? PacingStatus.Spacing)
             ?.let { java.time.Duration.between(now, it.earliestWindow).toMinutes() }
@@ -833,6 +986,32 @@ class PaceRepository(
     }
 
     suspend fun evaluateStoredAchievements() = evaluateAchievements()
+
+    /**
+     * The plan pacing should actually run with: identical to [plan] unless adaptive spacing is on,
+     * in which case the minimum gap reflects the steady days earned so far.
+     */
+    suspend fun effectivePlan(plan: PlanSettings): PlanSettings {
+        if (!plan.adaptiveSpacingEnabled) return plan
+        return AdaptiveSpacing.applyTo(plan, progressDays(plan))
+    }
+
+    suspend fun spacingProgress(): SpacingProgress {
+        val plan = settings.first()
+        return AdaptiveSpacing.progress(plan, progressDays(plan))
+    }
+
+    private suspend fun progressDays(plan: PlanSettings): List<DailyProgress> =
+        ProgressCalculator.calculate(
+            today = clock.instant().atZone(zoneProvider()).toLocalDate(),
+            zoneId = zoneProvider(),
+            logs = dao.allLogs().map { it.toDomain() },
+            snapshots = dao.allDailySnapshots().map { it.toDomain() },
+            sessions = emptyList(),
+            pricePerPack = plan.pricePerPack,
+            cigarettesPerPack = plan.cigarettesPerPack,
+            rewardTarget = plan.rewardTarget,
+        ).days
 
     private suspend fun ensureTodaySnapshot(plan: PlanSettings) {
         val now = clock.instant()
@@ -882,6 +1061,10 @@ class PaceRepository(
         .setThemeMode(plan.themeMode.toProto())
         .setQuitMode(plan.quitMode)
         .setQuitDate(plan.quitDate?.toString().orEmpty())
+        .setAdaptiveSpacingEnabled(plan.adaptiveSpacingEnabled)
+        .setAdaptiveSpacingStepMinutes(plan.adaptiveSpacingStepMinutes.coerceIn(5, 60))
+        .setAdaptiveSpacingIntervalDays(plan.adaptiveSpacingIntervalDays.coerceIn(1, 30))
+        .setAdaptiveSpacingMaxMinutes(plan.adaptiveSpacingMaxMinutes.coerceIn(30, 720))
         .build()
 
     private fun toDomain(proto: PacePreferences): PlanSettings = PlanSettings(
@@ -925,6 +1108,10 @@ class PaceRepository(
         quitMode = proto.quitMode,
         quitDate = proto.quitDate.takeIf(String::isNotBlank)
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+        adaptiveSpacingEnabled = proto.adaptiveSpacingEnabled,
+        adaptiveSpacingStepMinutes = proto.adaptiveSpacingStepMinutes.takeIf { it > 0 } ?: 15,
+        adaptiveSpacingIntervalDays = proto.adaptiveSpacingIntervalDays.takeIf { it > 0 } ?: 7,
+        adaptiveSpacingMaxMinutes = proto.adaptiveSpacingMaxMinutes.takeIf { it > 0 } ?: 240,
     )
 
     private fun PacePreferences.effectiveDailyCeiling(): Int {
@@ -1062,6 +1249,7 @@ class PaceRepository(
         const val MAX_IMPORT_CHARS = 1_000_000
         const val MAX_API_KEY_CHARS = 256
         const val MAX_COACH_MESSAGE_CHARS = 4_000
+        const val MAX_SYSTEM_PROMPT_CHARS = 2_000
 
         /** Fire a nudge when the next planned window is this close. */
         const val NUDGE_LEAD_MINUTES = 20L

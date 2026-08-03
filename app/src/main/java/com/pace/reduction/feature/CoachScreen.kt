@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -64,6 +65,7 @@ internal fun CoachScreen(
 ) {
     val coach by viewModel.coachState.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
+    var showBehaviourSheet by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val messages = uiState.coachMessages
 
@@ -93,8 +95,19 @@ internal fun CoachScreen(
                         )
                     }
                 }
+                IconButton(onClick = { showBehaviourSheet = true }) {
+                    Icon(Icons.Outlined.Tune, contentDescription = stringResource(R.string.coach_settings))
+                }
             },
         )
+
+        if (showBehaviourSheet) {
+            CoachSettingsSheet(
+                ai = uiState.ai,
+                viewModel = viewModel,
+                onDismiss = { showBehaviourSheet = false },
+            )
+        }
 
         if (!uiState.ai.isReady) {
             CoachSetupPrompt(onOpenSettings)

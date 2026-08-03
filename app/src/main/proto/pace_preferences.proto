@@ -65,6 +65,17 @@ message PacePreferences {
   bool ollama_proactive_nudges = 41;
   string quit_date = 42;
   bool quit_mode = 43;
+  bool provisioning_seed_applied = 44;
+  bool adaptive_spacing_enabled = 45;
+  int32 adaptive_spacing_step_minutes = 46;
+  int32 adaptive_spacing_interval_days = 47;
+  int32 adaptive_spacing_max_minutes = 48;
+  string ollama_system_prompt = 49;
+  // Inverted so proto3's false default means "stats are included".
+  bool ollama_omit_stats = 50;
+  bool ollama_checkups_enabled = 51;
+  int32 ollama_checkup_interval_minutes = 52;
+  int64 last_checkup_epoch_ms = 53;
 }
 
 enum WidgetStateProto {
@@ -88,4 +99,7 @@ message WidgetSnapshot {
   string safe_message = 8;
   string undo_log_id = 9;
   int64 undo_expiry_epoch_ms = 10;
+  string latest_badge_id = 11;
+  int32 badge_count = 12;
+  int32 minimum_gap_minutes = 13;
 }
