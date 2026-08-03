@@ -60,6 +60,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
@@ -69,9 +72,7 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewModel) {
-    var urgeBefore by rememberSaveable { mutableIntStateOf(3) }
-    var note by rememberSaveable { mutableStateOf("") }
-    var triggers by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val coach by viewModel.coachState.collectAsStateWithLifecycle()
     var activeTool by rememberSaveable { mutableStateOf<String?>(null) }
     var completedTool by rememberSaveable { mutableStateOf<String?>(null) }
     var externalPending by rememberSaveable { mutableStateOf<String?>(null) }
@@ -86,9 +87,6 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         activePause.endAt != null -> Duration.between(uiState.now, activePause.endAt).toMillis().coerceAtLeast(0L)
         activePause.isPaused -> activePause.pausedRemainingMillis
         else -> 0L
-    }
-    val pendingPauseOutcome = uiState.urgeSessions.firstOrNull {
-        it.tool == "PAUSE" && it.completed && it.urgeAfter == null
     }
 
     LaunchedEffect(activePause.sessionId, activePause.endAt, pauseRemaining) {
@@ -116,18 +114,22 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val triggerOptions = listOf(
-        "coffee" to R.string.trigger_coffee,
-        "after_food" to R.string.trigger_after_food,
-        "stress" to R.string.trigger_stress,
-        "alcohol" to R.string.trigger_alcohol,
-        "commute" to R.string.trigger_commute,
-        "social" to R.string.trigger_social,
-        "boredom" to R.string.trigger_boredom,
-        "work_break" to R.string.trigger_work_break,
-        "place" to R.string.trigger_place,
-        "other" to R.string.trigger_other,
-    )
+    // Finishing a tool is the whole win; asking a follow-up question straight afterwards was
+    // friction at the worst moment, so completion just records itself.
+    LaunchedEffect(completedTool) {
+        val encoded = completedTool ?: return@LaunchedEffect
+        viewModel.saveCompletedTool(
+            tool = encoded.substringBefore(':'),
+            urgeBefore = null,
+            urgeAfter = null,
+            triggers = emptySet(),
+            note = "",
+            smokedAfter = null,
+            externalRef = encoded.substringAfter(':', "").ifBlank { null },
+        )
+        completedTool = null
+        activeTool = null
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -139,76 +141,20 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
             Text(stringResource(R.string.toolkit_intro), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
-            SectionCard {
-                Text(stringResource(R.string.urge_check_in_title), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(R.string.urge_strength, urgeBefore), style = MaterialTheme.typography.titleMedium)
-                Slider(
-                    value = urgeBefore.toFloat(),
-                    onValueChange = { urgeBefore = it.toInt().coerceIn(1, 5) },
-                    valueRange = 1f..5f,
-                    steps = 3,
-                )
-                Text(stringResource(R.string.name_trigger), style = MaterialTheme.typography.titleMedium)
-                triggerOptions.chunked(2).forEach { options ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        options.forEach { (key, label) ->
-                            FilterChip(
-                                selected = key in triggers,
-                                onClick = { triggers = if (key in triggers) triggers - key else triggers + key },
-                                label = { Text(stringResource(label)) },
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it.take(500) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.optional_note)) },
-                )
-            }
-        }
-        item {
-            PauseCard(
-                active = activePause.isActive,
-                paused = activePause.isPaused,
+            RescueCard(
+                plan = coach.rescuePlan,
+                error = coach.error,
+                busy = coach.rescueBusy,
+                aiReady = uiState.ai.isReady,
+                timerActive = activePause.isActive,
+                timerPaused = activePause.isPaused,
                 remainingMillis = pauseRemaining,
-                onStart = { viewModel.startPause(urgeBefore, triggers.toSet(), note) },
-                onPause = viewModel::pauseTimer,
-                onResume = viewModel::resumeTimer,
-                onCancel = viewModel::cancelTimer,
+                onAsk = viewModel::requestRescuePlan,
+                onStartTimer = { viewModel.startPause(null, emptySet(), "") },
+                onPauseTimer = viewModel::pauseTimer,
+                onResumeTimer = viewModel::resumeTimer,
+                onCancelTimer = viewModel::cancelTimer,
             )
-        }
-        if (pendingPauseOutcome != null) {
-            item {
-                OutcomeCard(
-                    toolTitle = stringResource(R.string.five_minute_pause),
-                    onSave = { after, smoked -> viewModel.finishUrgeOutcome(pendingPauseOutcome.id, after, smoked) },
-                )
-            }
-        }
-        if (completedTool != null) {
-            item {
-                OutcomeCard(
-                    toolTitle = toolDisplayName(completedTool.orEmpty()),
-                    onSave = { after, smoked ->
-                        val encoded = completedTool.orEmpty()
-                        val tool = encoded.substringBefore(':')
-                        val externalRef = encoded.substringAfter(':', "").ifBlank { null }
-                        viewModel.saveCompletedTool(
-                            tool = tool,
-                            urgeBefore = urgeBefore,
-                            urgeAfter = after,
-                            triggers = triggers.toSet(),
-                            note = note,
-                            smokedAfter = smoked,
-                            externalRef = externalRef,
-                        )
-                        completedTool = null
-                        activeTool = null
-                    },
-                )
-            }
         }
         when (activeTool) {
             "SEQUENCE" -> item { SequenceGame(onComplete = { completedTool = "SEQUENCE" }, onClose = { activeTool = null }) }
@@ -283,7 +229,6 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
                 }
             }
         }
-        item { WeatherAndPlacesSection(uiState, viewModel) }
         item {
             Text(
                 stringResource(R.string.professional_support_note),
@@ -294,69 +239,109 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
     }
 }
 
+/**
+ * A blank five-minute countdown asks the user to invent their own distraction at the exact moment
+ * they are least able to. Instead the coach proposes one specific thing, and the timer is offered
+ * afterwards to hold the shape of it.
+ */
 @Composable
-private fun PauseCard(
-    active: Boolean,
-    paused: Boolean,
+private fun RescueCard(
+    plan: String,
+    error: String?,
+    busy: Boolean,
+    aiReady: Boolean,
+    timerActive: Boolean,
+    timerPaused: Boolean,
     remainingMillis: Long,
-    onStart: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
-    onCancel: () -> Unit,
+    onAsk: () -> Unit,
+    onStartTimer: () -> Unit,
+    onPauseTimer: () -> Unit,
+    onResumeTimer: () -> Unit,
+    onCancelTimer: () -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(stringResource(R.string.five_minute_pause), style = MaterialTheme.typography.headlineSmall)
-            Text(
-                if (active) formatToolkitTimer(remainingMillis) else stringResource(R.string.pause_invitation),
-                style = if (active) MaterialTheme.typography.displayMedium else MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-            )
-            if (!active) {
-                Button(onClick = onStart) { Text(stringResource(R.string.start_pause)) }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = if (paused) onResume else onPause) {
-                        Icon(if (paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause, contentDescription = null)
-                        Text(stringResource(if (paused) R.string.resume_pause else R.string.pause_timer))
+            Text(stringResource(R.string.rescue_title), style = MaterialTheme.typography.titleLarge)
+
+            when {
+                timerActive -> {
+                    if (plan.isNotBlank()) {
+                        Text(plan, style = MaterialTheme.typography.bodyLarge)
                     }
-                    OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.cancel_pause)) }
+                    Text(
+                        formatToolkitTimer(remainingMillis),
+                        style = MaterialTheme.typography.displayMedium,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = if (timerPaused) onResumeTimer else onPauseTimer,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(
+                                if (timerPaused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause,
+                                contentDescription = null,
+                            )
+                            Spacer(Modifier.size(6.dp))
+                            Text(stringResource(if (timerPaused) R.string.resume_pause else R.string.pause_timer))
+                        }
+                        OutlinedButton(onClick = onCancelTimer, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.cancel_pause))
+                        }
+                    }
+                }
+
+                busy -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.size(10.dp))
+                        Text(stringResource(R.string.rescue_thinking), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+
+                plan.isNotBlank() -> {
+                    Text(plan, style = MaterialTheme.typography.bodyLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onStartTimer, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text(stringResource(R.string.rescue_start_timer))
+                        }
+                        OutlinedButton(onClick = onAsk, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.rescue_another))
+                        }
+                    }
+                }
+
+                else -> {
+                    Text(
+                        stringResource(if (aiReady) R.string.rescue_body else R.string.rescue_offline),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    error?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    if (aiReady) {
+                        Button(onClick = onAsk, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+                            Spacer(Modifier.size(8.dp))
+                            Text(stringResource(R.string.rescue_action))
+                        }
+                    } else {
+                        OutlinedButton(onClick = onStartTimer, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.rescue_start_timer))
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun OutcomeCard(toolTitle: String, onSave: (Int, Boolean?) -> Unit) {
-    var urgeAfter by rememberSaveable { mutableIntStateOf(3) }
-    var smoked by rememberSaveable { mutableStateOf<Boolean?>(null) }
-    SectionCard {
-        Text(stringResource(R.string.after_check_in_title, toolTitle), style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(R.string.urge_after, urgeAfter))
-        Slider(
-            value = urgeAfter.toFloat(),
-            onValueChange = { urgeAfter = it.toInt().coerceIn(1, 5) },
-            valueRange = 1f..5f,
-            steps = 3,
-        )
-        Text(stringResource(R.string.smoked_after_question))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = smoked == false, onClick = { smoked = false }, label = { Text(stringResource(R.string.no)) })
-            FilterChip(selected = smoked == true, onClick = { smoked = true }, label = { Text(stringResource(R.string.yes)) })
-            FilterChip(selected = smoked == null, onClick = { smoked = null }, label = { Text(stringResource(R.string.prefer_not_to_say)) })
-        }
-        Button(onClick = { onSave(urgeAfter, smoked) }, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.save_check_in))
-        }
-        Text(stringResource(R.string.delay_is_win), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -532,16 +517,6 @@ private fun ExternalGameButton(title: Int, attribution: Int, onClick: () -> Unit
         }
         Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
     }
-}
-
-@Composable
-private fun toolDisplayName(encoded: String): String = when (encoded.substringBefore(':')) {
-    "SEQUENCE" -> stringResource(R.string.sequence_title)
-    "MEMORY" -> stringResource(R.string.memory_title)
-    "GROUNDING" -> stringResource(R.string.grounding_title)
-    "CHANGE_PLACE" -> stringResource(R.string.change_place_title)
-    "EXTERNAL_GAME" -> stringResource(R.string.connected_break_title)
-    else -> stringResource(R.string.toolkit_title)
 }
 
 internal fun openTrustedTab(context: android.content.Context, url: String) {

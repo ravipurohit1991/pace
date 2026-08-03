@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Notifications
@@ -68,6 +69,7 @@ internal fun SettingsScreen(
     onExport: (android.net.Uri) -> Unit,
     onImport: (android.net.Uri) -> Unit,
     onDeleteAll: () -> Unit,
+    onOpenHistory: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -109,7 +111,11 @@ internal fun SettingsScreen(
                         ThemeMode.entries.forEach { option ->
                             FilterChip(
                                 selected = theme == option,
-                                onClick = { theme = option },
+                                // Appearance should change as you tap it, not on a later Save.
+                                onClick = {
+                                    theme = option
+                                    onSave(uiState.settings.copy(themeMode = option))
+                                },
                                 label = {
                                     Text(
                                         stringResource(
@@ -184,6 +190,20 @@ internal fun SettingsScreen(
                     onClick = { onSave(uiState.settings.copy(themeMode = theme, reminderIntensity = reminder, hapticsEnabled = haptics)) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.save_settings)) }
+            }
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.history_open), style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        stringResource(R.string.history_open_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = onOpenHistory, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.EditCalendar, contentDescription = null)
+                        Text(stringResource(R.string.history_title))
+                    }
+                }
             }
             item {
                 SectionCard {

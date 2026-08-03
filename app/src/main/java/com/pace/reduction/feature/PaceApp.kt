@@ -79,6 +79,7 @@ import com.pace.reduction.PaceEvent
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
+import com.pace.reduction.domain.BadgeCatalogue
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.ReductionPlanner
 import com.pace.reduction.domain.model.CoachingTone
@@ -113,6 +114,9 @@ private data object ProgressDestination : NavKey
 @Serializable
 private data object SettingsDestination : NavKey
 
+@Serializable
+private data object HistoryDestination : NavKey
+
 private data class NavigationItem(
     val key: NavKey,
     val label: Int,
@@ -133,6 +137,8 @@ fun PaceApp(viewModel: PaceViewModel) {
     val backupImportedMessage = stringResource(R.string.backup_imported)
     val backupFailedMessage = stringResource(R.string.backup_failed)
     val coachSavedMessage = stringResource(R.string.coach_settings_saved)
+    val historyUpdatedMessage = stringResource(R.string.history_updated)
+    val historyRejectedMessage = stringResource(R.string.history_rejected)
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -158,6 +164,8 @@ fun PaceApp(viewModel: PaceViewModel) {
                 PaceEvent.BackupFailed -> snackbarHostState.showSnackbar(backupFailedMessage)
                 PaceEvent.CoachSettingsSaved -> snackbarHostState.showSnackbar(coachSavedMessage)
                 is PaceEvent.ApiKeyVerified -> Unit
+                PaceEvent.HistoryUpdated -> snackbarHostState.showSnackbar(historyUpdatedMessage)
+                PaceEvent.HistoryRejected -> snackbarHostState.showSnackbar(historyRejectedMessage)
             }
         }
     }
@@ -277,6 +285,14 @@ private fun MainShell(
                         onExport = viewModel::exportData,
                         onImport = viewModel::importData,
                         onDeleteAll = viewModel::deleteAllData,
+                        onOpenHistory = { backStack.add(HistoryDestination) },
+                        onBack = { backStack.removeLastOrNull() },
+                    )
+                }
+                entry<HistoryDestination> {
+                    HistoryEditorScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
                         onBack = { backStack.removeLastOrNull() },
                     )
                 }
@@ -554,6 +570,9 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
     var adaptiveStep by rememberSaveable(settings.adaptiveSpacingStepMinutes) { mutableStateOf(settings.adaptiveSpacingStepMinutes.toString()) }
     var adaptiveInterval by rememberSaveable(settings.adaptiveSpacingIntervalDays) { mutableStateOf(settings.adaptiveSpacingIntervalDays.toString()) }
     var adaptiveMax by rememberSaveable(settings.adaptiveSpacingMaxMinutes) { mutableStateOf(settings.adaptiveSpacingMaxMinutes.toString()) }
+    var highUrgeEnabled by rememberSaveable(settings.highUrgeWindowEnabled) { mutableStateOf(settings.highUrgeWindowEnabled) }
+    var highUrgeStart by rememberSaveable(settings.highUrgeStartMinutes) { mutableStateOf(formatMinutes(settings.highUrgeStartMinutes)) }
+    var highUrgeEnd by rememberSaveable(settings.highUrgeEndMinutes) { mutableStateOf(formatMinutes(settings.highUrgeEndMinutes)) }
 
     val newCeiling = ceiling.toIntOrNull()
     val parsedWake = parseTime(wake)
@@ -573,7 +592,8 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                     adaptiveInterval.toIntOrNull() in 1..30 &&
                     adaptiveMax.toIntOrNull() in 30..720
                 )
-            )
+            ) &&
+        (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null))
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -649,6 +669,27 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TimeField(R.string.wake_label, wake, { wake = it }, Modifier.weight(1f))
                 TimeField(R.string.sleep_label, sleep, { sleep = it }, Modifier.weight(1f))
+            }
+        }
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.high_urge_title), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.high_urge_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = highUrgeEnabled, onCheckedChange = { highUrgeEnabled = it })
+                }
+                if (highUrgeEnabled) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TimeField(R.string.high_urge_from, highUrgeStart, { highUrgeStart = it }, Modifier.weight(1f))
+                        TimeField(R.string.high_urge_to, highUrgeEnd, { highUrgeEnd = it }, Modifier.weight(1f))
+                    }
+                }
             }
         }
         item { PlanNumberField(R.string.morning_hold_label, morningHold, { morningHold = it }, 0..240) }
@@ -850,6 +891,9 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                             adaptiveSpacingStepMinutes = adaptiveStep.toIntOrNull() ?: settings.adaptiveSpacingStepMinutes,
                             adaptiveSpacingIntervalDays = adaptiveInterval.toIntOrNull() ?: settings.adaptiveSpacingIntervalDays,
                             adaptiveSpacingMaxMinutes = adaptiveMax.toIntOrNull() ?: settings.adaptiveSpacingMaxMinutes,
+                            highUrgeWindowEnabled = highUrgeEnabled,
+                            highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
+                            highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
                         ),
                     )
                 },
@@ -975,7 +1019,6 @@ private fun ProgressScreen(uiState: PaceUiState) {
                 Text(stringResource(R.string.best_morning_hold, metrics.bestMorningHoldMinutes))
                 Text(stringResource(R.string.steady_days, metrics.steadyDays7, metrics.steadyDays30))
                 Text(stringResource(R.string.pauses_recorded, metrics.pausesCompleted))
-                Text(stringResource(R.string.urges_reduced, metrics.urgesReduced))
                 Text(
                     stringResource(R.string.delay_is_win),
                     style = MaterialTheme.typography.bodySmall,
@@ -1017,20 +1060,13 @@ private fun ProgressScreen(uiState: PaceUiState) {
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        stringResource(R.string.badges_earned, uiState.achievements.size, ALL_BADGE_IDS.size),
+                        stringResource(R.string.badges_earned, uiState.achievements.size, BadgeCatalogue.size),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Spacer(Modifier.height(4.dp))
-                BadgeGrid(uiState.achievements)
-                if (uiState.achievements.isEmpty()) {
-                    Text(
-                        stringResource(R.string.no_badges_yet),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                BadgeFamilyList(uiState.achievements)
             }
         }
     }

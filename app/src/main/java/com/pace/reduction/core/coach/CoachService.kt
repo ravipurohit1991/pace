@@ -43,6 +43,11 @@ class CoachService(
 
     suspend fun riddle(): String = oneShot(CoachTask.RIDDLE)
 
+    /** A concrete, oddly specific thing to do right now — replaces the generic countdown. */
+    suspend fun rescuePlan(): String = oneShot(CoachTask.RESCUE)
+
+    suspend fun quote(): String = oneShot(CoachTask.QUOTE)
+
     suspend fun nudge(): String = oneShot(CoachTask.NUDGE)
 
     suspend fun insight(): String = oneShot(CoachTask.INSIGHT)

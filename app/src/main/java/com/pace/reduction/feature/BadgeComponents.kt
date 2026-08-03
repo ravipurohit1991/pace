@@ -5,22 +5,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CardGiftcard
-import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Handyman
-import androidx.compose.material.icons.filled.OpenInFull
-import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,103 +34,119 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.pace.reduction.R
+import com.pace.reduction.domain.BadgeCatalogue
+import com.pace.reduction.domain.BadgeFamily
 import com.pace.reduction.domain.model.Achievement
 
-/** Every badge Pace can award, in the order they usually arrive. */
-internal val ALL_BADGE_IDS = listOf(
-    "first_pause",
-    "honest_week",
-    "space_maker",
-    "morning_reclaimed",
-    "steady_three",
-    "tool_builder",
-    "ten_avoided",
-    "reward_step",
-)
+private data class FamilyVisual(val icon: ImageVector, val tint: Color, val label: Int)
 
-private data class BadgeVisual(val icon: ImageVector, val tint: Color)
-
-private fun badgeVisual(id: String): BadgeVisual = when (id) {
-    "first_pause" -> BadgeVisual(Icons.Filled.SelfImprovement, Color(0xFF4E8A62))
-    "honest_week" -> BadgeVisual(Icons.Filled.Verified, Color(0xFF3E7CA6))
-    "space_maker" -> BadgeVisual(Icons.Filled.OpenInFull, Color(0xFF6E5AA6))
-    "morning_reclaimed" -> BadgeVisual(Icons.Filled.WbSunny, Color(0xFFC98A2B))
-    "steady_three" -> BadgeVisual(Icons.Filled.TrendingDown, Color(0xFF2F8C87))
-    "tool_builder" -> BadgeVisual(Icons.Filled.Handyman, Color(0xFF8A6246))
-    "ten_avoided" -> BadgeVisual(Icons.Filled.Savings, Color(0xFF4B7F3F))
-    "reward_step" -> BadgeVisual(Icons.Filled.CardGiftcard, Color(0xFFB4566F))
-    else -> BadgeVisual(Icons.Filled.EmojiEvents, Color(0xFF6E7B72))
+private fun visualFor(family: BadgeFamily): FamilyVisual = when (family) {
+    BadgeFamily.CLEAN_HOURS -> FamilyVisual(Icons.Filled.Timer, Color(0xFF4E8A62), R.string.family_clean_hours)
+    BadgeFamily.CLEAN_DAYS -> FamilyVisual(Icons.Filled.WbSunny, Color(0xFFC98A2B), R.string.family_clean_days)
+    BadgeFamily.CLEAR_STREAK -> FamilyVisual(Icons.Filled.LocalFireDepartment, Color(0xFFC05B3C), R.string.family_clear_streak)
+    BadgeFamily.RESISTED -> FamilyVisual(Icons.Filled.Shield, Color(0xFF3E7CA6), R.string.family_resisted)
+    BadgeFamily.SAVED -> FamilyVisual(Icons.Filled.Savings, Color(0xFF4B7F3F), R.string.family_saved)
+    BadgeFamily.STEADY_DAYS -> FamilyVisual(Icons.Filled.TrendingUp, Color(0xFF2F8C87), R.string.family_steady_days)
+    BadgeFamily.TOOLS -> FamilyVisual(Icons.Filled.Handyman, Color(0xFF8A6246), R.string.family_tools)
+    BadgeFamily.CONVERSATIONS -> FamilyVisual(Icons.Filled.Forum, Color(0xFF6E5AA6), R.string.family_conversations)
+    BadgeFamily.LONGEST_WAIT -> FamilyVisual(Icons.Filled.HourglassBottom, Color(0xFF7A6C9B), R.string.family_longest_wait)
+    BadgeFamily.TIME_BACK -> FamilyVisual(Icons.Filled.Bolt, Color(0xFFB4566F), R.string.family_time_back)
 }
 
-/** Grid of every badge, earned ones in colour and the rest dimmed so there is something to aim at. */
+/**
+ * Badges grouped by family rather than listed flat — with 200+ of them a flat grid is noise.
+ * Each row shows how many tiers are earned and how close the next one is.
+ */
 @Composable
-internal fun BadgeGrid(earned: List<Achievement>) {
+internal fun BadgeFamilyList(earned: List<Achievement>) {
     val earnedIds = earned.map { it.badgeId }.toSet()
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        ALL_BADGE_IDS.forEach { id ->
-            BadgeTile(id = id, unlocked = id in earnedIds)
-        }
-    }
-}
-
-@Composable
-private fun BadgeTile(id: String, unlocked: Boolean) {
-    val visual = badgeVisual(id)
-    val container = if (unlocked) {
-        visual.tint.copy(alpha = 0.16f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    }
-    val content = if (unlocked) visual.tint else MaterialTheme.colorScheme.outline
-
-    Column(
-        modifier = Modifier.width(76.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier.size(56.dp).background(container, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = visual.icon,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(28.dp),
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        BadgeFamily.entries.forEach { family ->
+            val tiers = BadgeCatalogue.forFamily(family)
+            val earnedTiers = tiers.filter { it.id in earnedIds }
+            val next = tiers.firstOrNull { it.id !in earnedIds }
+            FamilyRow(
+                family = family,
+                earnedCount = earnedTiers.size,
+                totalCount = tiers.size,
+                bestThreshold = earnedTiers.maxOfOrNull { it.threshold },
+                nextThreshold = next?.threshold,
             )
         }
-        Text(
-            text = badgeTitleFor(id),
-            style = MaterialTheme.typography.labelSmall,
-            textAlign = TextAlign.Center,
-            fontWeight = if (unlocked) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (unlocked) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            modifier = Modifier.padding(top = 6.dp),
-        )
     }
 }
 
 @Composable
-internal fun badgeTitleFor(id: String): String = stringResource(
-    when (id) {
-        "first_pause" -> R.string.badge_first_pause
-        "honest_week" -> R.string.badge_honest_week
-        "space_maker" -> R.string.badge_space_maker
-        "morning_reclaimed" -> R.string.badge_morning_reclaimed
-        "steady_three" -> R.string.badge_steady_three
-        "tool_builder" -> R.string.badge_tool_builder
-        "ten_avoided" -> R.string.badge_ten_avoided
-        "reward_step" -> R.string.badge_reward_step
-        else -> R.string.badge_progress
-    },
-)
+private fun FamilyRow(
+    family: BadgeFamily,
+    earnedCount: Int,
+    totalCount: Int,
+    bestThreshold: Long?,
+    nextThreshold: Long?,
+) {
+    val visual = visualFor(family)
+    val unlocked = earnedCount > 0
+    val container = if (unlocked) visual.tint.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant
+    val content = if (unlocked) visual.tint else MaterialTheme.colorScheme.outline
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier.size(46.dp).background(container, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(visual.icon, contentDescription = null, tint = content, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.size(12.dp))
+        Column(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(visual.label),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (unlocked) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$earnedCount/$totalCount",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { if (totalCount == 0) 0f else earnedCount.toFloat() / totalCount },
+                modifier = Modifier.fillMaxWidth().height(5.dp),
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = when {
+                    nextThreshold == null -> stringResource(R.string.family_complete)
+                    bestThreshold == null -> stringResource(R.string.family_first, nextThreshold.toString())
+                    else -> stringResource(R.string.family_next, nextThreshold.toString())
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** The most recent handful of badges, shown on Today as a small celebration strip. */
+@Composable
+internal fun RecentBadgeStrip(earned: List<Achievement>) {
+    if (earned.isEmpty()) return
+    val recent = earned.sortedByDescending { it.unlockedAt }.take(6)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        recent.forEach { achievement ->
+            val family = BadgeCatalogue.definition(achievement.badgeId)?.family ?: return@forEach
+            val visual = visualFor(family)
+            Box(
+                modifier = Modifier.size(38.dp).background(visual.tint.copy(alpha = 0.16f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(visual.icon, contentDescription = null, tint = visual.tint, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}

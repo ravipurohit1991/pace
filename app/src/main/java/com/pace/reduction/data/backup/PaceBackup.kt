@@ -11,7 +11,6 @@ data class PaceBackup(
     val urgeSessions: List<UrgeBackup>,
     val dailySnapshots: List<SnapshotBackup>,
     val achievements: List<AchievementBackup>,
-    val triggerPlaces: List<TriggerPlaceBackup>,
     val externalBreaks: List<ExternalBreakBackup>,
 )
 
@@ -83,18 +82,6 @@ data class SnapshotBackup(
 
 @Serializable
 data class AchievementBackup(val badgeId: String, val unlockedAtEpochMs: Long, val evidenceJson: String)
-
-@Serializable
-data class TriggerPlaceBackup(
-    val id: String,
-    val label: String,
-    val latitudeRounded: Double,
-    val longitudeRounded: Double,
-    val radiusMeters: Int,
-    val enabled: Boolean,
-    val automaticCueEnabled: Boolean,
-    val createdAtEpochMs: Long,
-)
 
 @Serializable
 data class ExternalBreakBackup(

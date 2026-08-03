@@ -18,7 +18,6 @@ object PaceBackupValidator {
         requireUnique(backup.logs.map { it.id })
         requireUnique(backup.urgeSessions.map { it.id })
         requireUnique(backup.dailySnapshots.map { it.localDate })
-        requireUnique(backup.triggerPlaces.map { it.id })
         val latestAllowed = nowEpochMs + 24 * 60 * 60 * 1_000L
         backup.logs.forEach {
             require(it.id.isNotBlank() && it.occurredAtEpochMs in 0..latestAllowed && it.recordedAtEpochMs in 0..latestAllowed)
@@ -33,10 +32,6 @@ object PaceBackupValidator {
         backup.dailySnapshots.forEach {
             require(runCatching { LocalDate.parse(it.localDate) }.isSuccess)
             require(it.baseline in 1..100 && it.ceiling in 0..100 && it.minimumGapMinutes in 15..360)
-        }
-        backup.triggerPlaces.forEach {
-            require(it.label.length in 1..80 && it.latitudeRounded in -90.0..90.0 && it.longitudeRounded in -180.0..180.0)
-            require(it.radiusMeters in 100..500)
         }
     }
 

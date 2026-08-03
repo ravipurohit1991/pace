@@ -1,7 +1,6 @@
 package com.pace.reduction.core
 
 import com.pace.reduction.core.network.SafeLinks
-import com.pace.reduction.core.network.WeatherCoordinates
 import com.pace.reduction.core.notifications.NotificationPolicy
 import com.pace.reduction.domain.WidgetTapGuard
 import org.junit.Assert.assertEquals
@@ -18,12 +17,6 @@ class PolicyTest {
         assertFalse(SafeLinks.isAllowed("https://open-meteo.com.evil.example/"))
         assertFalse(SafeLinks.isAllowed("https://ollama.com.evil.example/"))
         assertFalse(SafeLinks.isAllowed("javascript:alert(1)"))
-    }
-
-    @Test
-    fun weatherCoordinatesRoundToTwoDecimals() {
-        assertEquals(55.68, WeatherCoordinates.round(55.6761), 0.0)
-        assertEquals(12.57, WeatherCoordinates.round(12.5683), 0.0)
     }
 
     @Test

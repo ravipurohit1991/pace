@@ -2,6 +2,7 @@ package com.pace.reduction.feature
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -66,6 +67,17 @@ internal fun CoachSettingsSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.coach_behaviour_title), style = MaterialTheme.typography.titleLarge)
+
+            Text(stringResource(R.string.coach_personality), style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CoachPrompt.PERSONA_PRESETS.forEach { (label, text) ->
+                    FilterChip(
+                        selected = prompt.trim() == text,
+                        onClick = { prompt = text },
+                        label = { Text(label) },
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = prompt,

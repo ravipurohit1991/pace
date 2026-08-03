@@ -147,7 +147,6 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.browser)
-    implementation(libs.play.services.location)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
 

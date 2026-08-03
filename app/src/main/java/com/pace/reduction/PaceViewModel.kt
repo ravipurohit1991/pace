@@ -22,7 +22,6 @@ import com.pace.reduction.domain.model.CoachMessage
 import com.pace.reduction.domain.model.DailyCount
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.TodaySummary
-import com.pace.reduction.domain.model.TriggerPlace
 import com.pace.reduction.domain.model.UrgeSession
 import java.time.Instant
 import java.time.LocalDate
@@ -55,7 +54,6 @@ data class PaceUiState(
     val quit: QuitMetrics? = null,
     val spacing: SpacingProgress? = null,
     val achievements: List<Achievement> = emptyList(),
-    val triggerPlaces: List<TriggerPlace> = emptyList(),
     val activePause: ActivePause = ActivePause(),
     val ai: AiSettings = AiSettings(),
     val coachMessages: List<CoachMessage> = emptyList(),
@@ -70,6 +68,11 @@ data class CoachUiState(
     val error: String? = null,
     val verifiedModels: List<String> = emptyList(),
     val verifying: Boolean = false,
+    /** The coach's current "do this right now" proposal, shown in the Toolkit. */
+    val rescuePlan: String = "",
+    val rescueBusy: Boolean = false,
+    val insight: String = "",
+    val insightBusy: Boolean = false,
 )
 
 sealed interface PaceEvent {
@@ -84,6 +87,8 @@ sealed interface PaceEvent {
     data object BackupFailed : PaceEvent
     data object CoachSettingsSaved : PaceEvent
     data class ApiKeyVerified(val modelCount: Int) : PaceEvent
+    data object HistoryUpdated : PaceEvent
+    data object HistoryRejected : PaceEvent
 }
 
 private data class CoreState(
@@ -142,10 +147,9 @@ class PaceViewModel(
     val uiState = combine(
         coreState,
         repository.achievements,
-        repository.triggerPlaces,
         repository.activePause,
         aiState,
-    ) { core, achievements, triggerPlaces, activePause, ai ->
+    ) { core, achievements, activePause, ai ->
         val zone = ZoneId.systemDefault()
         val progress = ProgressCalculator.calculate(
             today = core.now.atZone(zone).toLocalDate(),
@@ -185,7 +189,6 @@ class PaceViewModel(
             quit = quit,
             spacing = spacing,
             achievements = achievements,
-            triggerPlaces = triggerPlaces,
             activePause = activePause,
             ai = ai.settings,
             coachMessages = ai.messages,
@@ -277,23 +280,6 @@ class PaceViewModel(
         }
     }
 
-    fun saveTriggerPlace(
-        label: String,
-        latitude: Double,
-        longitude: Double,
-        radiusMeters: Int,
-    ) {
-        viewModelScope.launch { repository.saveTriggerPlace(label = label, latitude = latitude, longitude = longitude, radiusMeters = radiusMeters) }
-    }
-
-    fun deleteTriggerPlace(id: String) {
-        viewModelScope.launch { repository.deleteTriggerPlace(id) }
-    }
-
-    fun updateTriggerPlace(id: String, label: String, enabled: Boolean, automaticCueEnabled: Boolean) {
-        viewModelScope.launch { repository.updateTriggerPlace(id, label, enabled, automaticCueEnabled) }
-    }
-
     fun sendCoachMessage(text: String) {
         val prompt = text.trim()
         if (prompt.isEmpty() || _coachState.value.busy) return
@@ -319,6 +305,40 @@ class PaceViewModel(
                 },
                 onFailure = { error ->
                     _coachState.update { it.copy(busy = false, streamingReply = "", error = error.userMessage()) }
+                },
+            )
+        }
+    }
+
+    /** Asks the coach for one concrete thing to do right now, shown in the Toolkit. */
+    fun requestRescuePlan() {
+        if (_coachState.value.rescueBusy) return
+        viewModelScope.launch {
+            _coachState.update { it.copy(rescueBusy = true, error = null) }
+            runCatching { coachService.rescuePlan() }.fold(
+                onSuccess = { plan ->
+                    _coachState.update { it.copy(rescueBusy = false, rescuePlan = plan.ifBlank { it.rescuePlan }) }
+                },
+                onFailure = { error ->
+                    _coachState.update { it.copy(rescueBusy = false, error = error.userMessage()) }
+                },
+            )
+        }
+    }
+
+    fun clearRescuePlan() = _coachState.update { it.copy(rescuePlan = "") }
+
+    /** Refreshes the "what Pace notices" line on Progress. */
+    fun requestInsight() {
+        if (_coachState.value.insightBusy) return
+        viewModelScope.launch {
+            _coachState.update { it.copy(insightBusy = true, error = null) }
+            runCatching { coachService.insight() }.fold(
+                onSuccess = { text ->
+                    _coachState.update { it.copy(insightBusy = false, insight = text.ifBlank { it.insight }) }
+                },
+                onFailure = { error ->
+                    _coachState.update { it.copy(insightBusy = false, error = error.userMessage()) }
                 },
             )
         }
@@ -364,6 +384,46 @@ class PaceViewModel(
         viewModelScope.launch {
             repository.saveAiSettings(enabled, apiKey, model, proactiveNudges)
             _events.emit(PaceEvent.CoachSettingsSaved)
+        }
+    }
+
+    /** Logs for the day being edited in the history screen. */
+    private val _editorDate = MutableStateFlow(LocalDate.now())
+    val editorDate: StateFlow<LocalDate> = _editorDate.asStateFlow()
+
+    private val _editorLogs = MutableStateFlow<List<CigaretteLog>>(emptyList())
+    val editorLogs: StateFlow<List<CigaretteLog>> = _editorLogs.asStateFlow()
+
+    fun selectEditorDate(date: LocalDate) {
+        if (date.isAfter(LocalDate.now())) return
+        _editorDate.value = date
+        refreshEditorLogs()
+    }
+
+    fun refreshEditorLogs() {
+        viewModelScope.launch {
+            _editorLogs.value = repository.logsOn(_editorDate.value)
+        }
+    }
+
+    fun addHistoryEntry(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            val moment = _editorDate.value.atTime(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
+            val result = runCatching { repository.addLogAt(moment) }
+            if (result.isSuccess) {
+                _editorLogs.value = repository.logsOn(_editorDate.value)
+                _events.emit(PaceEvent.HistoryUpdated)
+            } else {
+                _events.emit(PaceEvent.HistoryRejected)
+            }
+        }
+    }
+
+    fun deleteHistoryEntry(id: String) {
+        viewModelScope.launch {
+            repository.deleteLog(id)
+            _editorLogs.value = repository.logsOn(_editorDate.value)
+            _events.emit(PaceEvent.HistoryUpdated)
         }
     }
 
@@ -456,18 +516,6 @@ class PaceViewModel(
                 repository.importJson(json)
             }
             _events.emit(if (result.isSuccess) PaceEvent.BackupImported else PaceEvent.BackupFailed)
-        }
-    }
-
-    private fun lastSevenDays(now: Instant, zone: ZoneId, logs: List<CigaretteLog>): List<DailyCount> {
-        val today = now.atZone(zone).toLocalDate()
-        val grouped = logs
-            .filter { it.reversedAt == null }
-            .groupingBy { it.occurredAt.atZone(zone).toLocalDate() }
-            .eachCount()
-        return (6 downTo 0).map { offset ->
-            val date = today.minusDays(offset.toLong())
-            DailyCount(date, grouped[date] ?: 0)
         }
     }
 
