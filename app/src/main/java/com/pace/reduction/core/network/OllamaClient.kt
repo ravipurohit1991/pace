@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -31,7 +32,12 @@ private data class ChatRequest(
 @Serializable
 private data class ChatOptions(
     val temperature: Double = 0.85,
-    val num_predict: Int = 320,
+    /**
+     * Generous on purpose. Reasoning models spend this budget on their internal trace before
+     * emitting any content, so a tight cap returns an empty message with done_reason "length" —
+     * silently, with no error to surface. The visible reply is still bounded by MAX_REPLY_CHARS.
+     */
+    val num_predict: Int = 1_600,
 )
 
 @Serializable
@@ -41,6 +47,7 @@ private data class ChatChunkMessage(val role: String = "assistant", val content:
 private data class ChatChunk(
     val message: ChatChunkMessage? = null,
     val done: Boolean = false,
+    @SerialName("done_reason") val doneReason: String? = null,
     val error: String? = null,
 )
 
@@ -114,7 +121,13 @@ class OllamaClient {
                 val body = response.body.string().take(MAX_RESPONSE_CHARS)
                 val chunk = json.decodeFromString(ChatChunk.serializer(), body)
                 chunk.error?.let { error(it.take(200)) }
-                chunk.message?.content.orEmpty().trim().take(MAX_REPLY_CHARS)
+                val content = chunk.message?.content.orEmpty().trim()
+                // An empty reply that stopped on "length" means the budget went to reasoning.
+                // Surface it rather than letting the caller show a blank card.
+                if (content.isEmpty() && chunk.doneReason == "length") {
+                    error("The model ran out of room before answering")
+                }
+                content.take(MAX_REPLY_CHARS)
             }
         }
 

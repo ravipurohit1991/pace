@@ -22,6 +22,13 @@ data class CoachContext(
     val hardestSituations: List<String>,
     val personalReason: String,
     val tone: String,
+    /** Local wall-clock context, so replies fit the time of day the user is actually living in. */
+    val localTime: String,
+    val dayOfWeek: String,
+    val partOfDay: String,
+    val timeZone: String,
+    /** True when the user is inside a window they marked as difficult. */
+    val inHighUrgeWindow: Boolean,
 )
 
 enum class CoachTask { CHAT, RIDDLE, NUDGE, INSIGHT, CHECKUP, QUOTE, RESCUE }
@@ -145,8 +152,9 @@ object CoachPrompt {
                 "them to reply in the chat. No greeting, no sign-off, no quotation marks."
         CoachTask.QUOTE ->
             "Share one short line worth carrying around — a real quote with its author, or a sharp " +
-                "original thought. Under 30 words including the attribution. Nothing saccharine, " +
-                "nothing about willpower or addiction. Something a thoughtful friend would actually send."
+                "original thought. It has to fit on a home-screen widget, so keep it under 14 words " +
+                "including any attribution, and never let it run past 90 characters. Nothing " +
+                "saccharine, nothing about willpower. Something a thoughtful friend would actually send."
         CoachTask.INSIGHT ->
             "Look at their numbers and name one honest pattern plus one small experiment for today. " +
                 "Refer to the numbers as moments, waits and streaks. At most three sentences."
@@ -169,6 +177,13 @@ object CoachPrompt {
     /** Neutral phrasing only — no vocabulary here that the model could echo back as a trigger. */
     private fun facts(context: CoachContext): String = buildString {
         appendLine("Quiet context about them (from their own device — never read these back as a list):")
+        appendLine(
+            "- Right now it is ${context.localTime} on ${context.dayOfWeek} " +
+                "(${context.partOfDay}, ${context.timeZone}). Fit what you say to that hour.",
+        )
+        if (context.inHighUrgeWindow) {
+            appendLine("- They flagged this time of day as one of their harder stretches. Be extra engaging.")
+        }
         appendLine("- Moments they gave in to today: ${context.countToday}, against a plan of ${context.ceiling}")
         context.minutesSinceLast?.let { appendLine("- Minutes since the last one: $it") }
         context.minutesUntilNextWindow?.let { appendLine("- Minutes until their next scheduled window: $it") }

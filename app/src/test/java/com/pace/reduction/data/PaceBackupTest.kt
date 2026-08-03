@@ -72,7 +72,6 @@ class PaceBackupTest {
         urgeSessions = emptyList(),
         dailySnapshots = emptyList(),
         achievements = emptyList(),
-        triggerPlaces = emptyList(),
         externalBreaks = emptyList(),
     )
 }

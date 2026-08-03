@@ -34,8 +34,6 @@ data class PlanSettings(
     val reminderIntensity: ReminderIntensity = ReminderIntensity.OFF,
     val notificationPrivate: Boolean = true,
     val hapticsEnabled: Boolean = true,
-    val weatherEnabled: Boolean = false,
-    val triggerPlacesEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val quitMode: Boolean = false,
     val quitDate: LocalDate? = null,
@@ -44,6 +42,10 @@ data class PlanSettings(
     val adaptiveSpacingStepMinutes: Int = 15,
     val adaptiveSpacingIntervalDays: Int = 7,
     val adaptiveSpacingMaxMinutes: Int = 240,
+    /** A daily stretch the user finds hardest; the coach leans in during it. */
+    val highUrgeWindowEnabled: Boolean = false,
+    val highUrgeStartMinutes: Int = 15 * 60,
+    val highUrgeEndMinutes: Int = 18 * 60,
 )
 
 /** Ollama Cloud coach configuration. The key is held encrypted at rest. */
@@ -109,16 +111,6 @@ data class Achievement(
     val badgeId: String,
     val unlockedAt: Instant,
     val evidence: String,
-)
-
-data class TriggerPlace(
-    val id: String,
-    val label: String,
-    val latitudeRounded: Double,
-    val longitudeRounded: Double,
-    val radiusMeters: Int,
-    val enabled: Boolean,
-    val automaticCueEnabled: Boolean,
 )
 
 data class CigaretteLog(

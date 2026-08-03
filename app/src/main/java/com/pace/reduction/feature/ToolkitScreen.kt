@@ -88,9 +88,6 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         activePause.isPaused -> activePause.pausedRemainingMillis
         else -> 0L
     }
-    val pendingPauseOutcome = uiState.urgeSessions.firstOrNull {
-        it.tool == "PAUSE" && it.completed && it.urgeAfter == null
-    }
 
     LaunchedEffect(activePause.sessionId, activePause.endAt, pauseRemaining) {
         if (activePause.isRunning && pauseRemaining == 0L) {
@@ -117,6 +114,23 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Finishing a tool is the whole win; asking a follow-up question straight afterwards was
+    // friction at the worst moment, so completion just records itself.
+    LaunchedEffect(completedTool) {
+        val encoded = completedTool ?: return@LaunchedEffect
+        viewModel.saveCompletedTool(
+            tool = encoded.substringBefore(':'),
+            urgeBefore = null,
+            urgeAfter = null,
+            triggers = emptySet(),
+            note = "",
+            smokedAfter = null,
+            externalRef = encoded.substringAfter(':', "").ifBlank { null },
+        )
+        completedTool = null
+        activeTool = null
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
@@ -129,6 +143,7 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         item {
             RescueCard(
                 plan = coach.rescuePlan,
+                error = coach.error,
                 busy = coach.rescueBusy,
                 aiReady = uiState.ai.isReady,
                 timerActive = activePause.isActive,
@@ -140,37 +155,6 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
                 onResumeTimer = viewModel::resumeTimer,
                 onCancelTimer = viewModel::cancelTimer,
             )
-        }
-        if (pendingPauseOutcome != null) {
-            item {
-                OutcomeCard(
-                    toolTitle = stringResource(R.string.five_minute_pause),
-                    onSave = { smoked -> viewModel.finishUrgeOutcome(pendingPauseOutcome.id, null, smoked) },
-                )
-            }
-        }
-        if (completedTool != null) {
-            item {
-                OutcomeCard(
-                    toolTitle = toolDisplayName(completedTool.orEmpty()),
-                    onSave = { smoked ->
-                        val encoded = completedTool.orEmpty()
-                        val tool = encoded.substringBefore(':')
-                        val externalRef = encoded.substringAfter(':', "").ifBlank { null }
-                        viewModel.saveCompletedTool(
-                            tool = tool,
-                            urgeBefore = null,
-                            urgeAfter = null,
-                            triggers = emptySet(),
-                            note = "",
-                            smokedAfter = smoked,
-                            externalRef = externalRef,
-                        )
-                        completedTool = null
-                        activeTool = null
-                    },
-                )
-            }
         }
         when (activeTool) {
             "SEQUENCE" -> item { SequenceGame(onComplete = { completedTool = "SEQUENCE" }, onClose = { activeTool = null }) }
@@ -263,6 +247,7 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
 @Composable
 private fun RescueCard(
     plan: String,
+    error: String?,
     busy: Boolean,
     aiReady: Boolean,
     timerActive: Boolean,
@@ -340,6 +325,9 @@ private fun RescueCard(
                         stringResource(if (aiReady) R.string.rescue_body else R.string.rescue_offline),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    error?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                     if (aiReady) {
                         Button(onClick = onAsk, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
@@ -354,34 +342,6 @@ private fun RescueCard(
                 }
             }
         }
-    }
-}
-
-/** One question after a tool: did it hold? Anything more is friction at the worst moment. */
-@Composable
-private fun OutcomeCard(toolTitle: String, onSave: (Boolean?) -> Unit) {
-    SectionCard {
-        Text(stringResource(R.string.after_check_in_title, toolTitle), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.smoked_after_question),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onSave(false) }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.no))
-            }
-            OutlinedButton(onClick = { onSave(true) }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.yes))
-            }
-            OutlinedButton(onClick = { onSave(null) }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.prefer_not_to_say))
-            }
-        }
-        Text(
-            stringResource(R.string.delay_is_win),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -557,16 +517,6 @@ private fun ExternalGameButton(title: Int, attribution: Int, onClick: () -> Unit
         }
         Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
     }
-}
-
-@Composable
-private fun toolDisplayName(encoded: String): String = when (encoded.substringBefore(':')) {
-    "SEQUENCE" -> stringResource(R.string.sequence_title)
-    "MEMORY" -> stringResource(R.string.memory_title)
-    "GROUNDING" -> stringResource(R.string.grounding_title)
-    "CHANGE_PLACE" -> stringResource(R.string.change_place_title)
-    "EXTERNAL_GAME" -> stringResource(R.string.connected_break_title)
-    else -> stringResource(R.string.toolkit_title)
 }
 
 internal fun openTrustedTab(context: android.content.Context, url: String) {

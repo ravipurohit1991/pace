@@ -181,11 +181,12 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
             }
         }
 
-        if (!compact && snapshot.quote.isNotBlank()) {
+        // Only when there is genuine vertical room, otherwise the line gets clipped mid-word.
+        if (!compact && size.height >= 140.dp && snapshot.quote.isNotBlank()) {
             Spacer(GlanceModifier.height(9.dp))
             Text(
                 text = snapshot.quote,
-                maxLines = if (wide) 2 else 3,
+                maxLines = 3,
                 style = TextStyle(color = Muted, fontSize = 11.sp),
             )
         }

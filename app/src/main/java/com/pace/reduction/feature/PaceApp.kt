@@ -570,6 +570,9 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
     var adaptiveStep by rememberSaveable(settings.adaptiveSpacingStepMinutes) { mutableStateOf(settings.adaptiveSpacingStepMinutes.toString()) }
     var adaptiveInterval by rememberSaveable(settings.adaptiveSpacingIntervalDays) { mutableStateOf(settings.adaptiveSpacingIntervalDays.toString()) }
     var adaptiveMax by rememberSaveable(settings.adaptiveSpacingMaxMinutes) { mutableStateOf(settings.adaptiveSpacingMaxMinutes.toString()) }
+    var highUrgeEnabled by rememberSaveable(settings.highUrgeWindowEnabled) { mutableStateOf(settings.highUrgeWindowEnabled) }
+    var highUrgeStart by rememberSaveable(settings.highUrgeStartMinutes) { mutableStateOf(formatMinutes(settings.highUrgeStartMinutes)) }
+    var highUrgeEnd by rememberSaveable(settings.highUrgeEndMinutes) { mutableStateOf(formatMinutes(settings.highUrgeEndMinutes)) }
 
     val newCeiling = ceiling.toIntOrNull()
     val parsedWake = parseTime(wake)
@@ -589,7 +592,8 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                     adaptiveInterval.toIntOrNull() in 1..30 &&
                     adaptiveMax.toIntOrNull() in 30..720
                 )
-            )
+            ) &&
+        (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null))
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -665,6 +669,27 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TimeField(R.string.wake_label, wake, { wake = it }, Modifier.weight(1f))
                 TimeField(R.string.sleep_label, sleep, { sleep = it }, Modifier.weight(1f))
+            }
+        }
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.high_urge_title), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.high_urge_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = highUrgeEnabled, onCheckedChange = { highUrgeEnabled = it })
+                }
+                if (highUrgeEnabled) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TimeField(R.string.high_urge_from, highUrgeStart, { highUrgeStart = it }, Modifier.weight(1f))
+                        TimeField(R.string.high_urge_to, highUrgeEnd, { highUrgeEnd = it }, Modifier.weight(1f))
+                    }
+                }
             }
         }
         item { PlanNumberField(R.string.morning_hold_label, morningHold, { morningHold = it }, 0..240) }
@@ -866,6 +891,9 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                             adaptiveSpacingStepMinutes = adaptiveStep.toIntOrNull() ?: settings.adaptiveSpacingStepMinutes,
                             adaptiveSpacingIntervalDays = adaptiveInterval.toIntOrNull() ?: settings.adaptiveSpacingIntervalDays,
                             adaptiveSpacingMaxMinutes = adaptiveMax.toIntOrNull() ?: settings.adaptiveSpacingMaxMinutes,
+                            highUrgeWindowEnabled = highUrgeEnabled,
+                            highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
+                            highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
                         ),
                     )
                 },

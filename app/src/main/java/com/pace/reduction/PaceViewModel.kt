@@ -22,7 +22,6 @@ import com.pace.reduction.domain.model.CoachMessage
 import com.pace.reduction.domain.model.DailyCount
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.TodaySummary
-import com.pace.reduction.domain.model.TriggerPlace
 import com.pace.reduction.domain.model.UrgeSession
 import java.time.Instant
 import java.time.LocalDate
@@ -55,7 +54,6 @@ data class PaceUiState(
     val quit: QuitMetrics? = null,
     val spacing: SpacingProgress? = null,
     val achievements: List<Achievement> = emptyList(),
-    val triggerPlaces: List<TriggerPlace> = emptyList(),
     val activePause: ActivePause = ActivePause(),
     val ai: AiSettings = AiSettings(),
     val coachMessages: List<CoachMessage> = emptyList(),
@@ -149,10 +147,9 @@ class PaceViewModel(
     val uiState = combine(
         coreState,
         repository.achievements,
-        repository.triggerPlaces,
         repository.activePause,
         aiState,
-    ) { core, achievements, triggerPlaces, activePause, ai ->
+    ) { core, achievements, activePause, ai ->
         val zone = ZoneId.systemDefault()
         val progress = ProgressCalculator.calculate(
             today = core.now.atZone(zone).toLocalDate(),
@@ -192,7 +189,6 @@ class PaceViewModel(
             quit = quit,
             spacing = spacing,
             achievements = achievements,
-            triggerPlaces = triggerPlaces,
             activePause = activePause,
             ai = ai.settings,
             coachMessages = ai.messages,
@@ -282,23 +278,6 @@ class PaceViewModel(
             repository.saveCompletedTool(tool, urgeBefore, urgeAfter, triggers, note, smokedAfter, externalRef)
             _events.emit(PaceEvent.CheckInSaved)
         }
-    }
-
-    fun saveTriggerPlace(
-        label: String,
-        latitude: Double,
-        longitude: Double,
-        radiusMeters: Int,
-    ) {
-        viewModelScope.launch { repository.saveTriggerPlace(label = label, latitude = latitude, longitude = longitude, radiusMeters = radiusMeters) }
-    }
-
-    fun deleteTriggerPlace(id: String) {
-        viewModelScope.launch { repository.deleteTriggerPlace(id) }
-    }
-
-    fun updateTriggerPlace(id: String, label: String, enabled: Boolean, automaticCueEnabled: Boolean) {
-        viewModelScope.launch { repository.updateTriggerPlace(id, label, enabled, automaticCueEnabled) }
     }
 
     fun sendCoachMessage(text: String) {
@@ -537,18 +516,6 @@ class PaceViewModel(
                 repository.importJson(json)
             }
             _events.emit(if (result.isSuccess) PaceEvent.BackupImported else PaceEvent.BackupFailed)
-        }
-    }
-
-    private fun lastSevenDays(now: Instant, zone: ZoneId, logs: List<CigaretteLog>): List<DailyCount> {
-        val today = now.atZone(zone).toLocalDate()
-        val grouped = logs
-            .filter { it.reversedAt == null }
-            .groupingBy { it.occurredAt.atZone(zone).toLocalDate() }
-            .eachCount()
-        return (6 downTo 0).map { offset ->
-            val date = today.minusDays(offset.toLong())
-            DailyCount(date, grouped[date] ?: 0)
         }
     }
 

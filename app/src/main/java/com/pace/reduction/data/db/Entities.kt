@@ -58,18 +58,6 @@ data class PersonalRecordEntity(
     val sourceEventId: String?,
 )
 
-@Entity(tableName = "trigger_places")
-data class TriggerPlaceEntity(
-    @PrimaryKey val id: String,
-    val label: String,
-    val latitudeRounded: Double,
-    val longitudeRounded: Double,
-    val radiusMeters: Int,
-    val enabled: Boolean,
-    val automaticCueEnabled: Boolean,
-    val createdAtEpochMs: Long,
-)
-
 @Entity(tableName = "external_breaks")
 data class ExternalBreakEntity(
     @PrimaryKey val id: String,

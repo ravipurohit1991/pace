@@ -12,17 +12,23 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyPlanSnapshotEntity::class,
         AchievementEntity::class,
         PersonalRecordEntity::class,
-        TriggerPlaceEntity::class,
         ExternalBreakEntity::class,
         CoachMessageEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class PaceDatabase : RoomDatabase() {
     abstract fun paceDao(): PaceDao
 
     companion object {
+        /** Location trigger places were removed; the table goes with them. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `trigger_places`")
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

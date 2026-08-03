@@ -20,7 +20,6 @@ import com.pace.reduction.data.db.AchievementEntity
 import com.pace.reduction.data.db.DailyPlanSnapshotEntity
 import com.pace.reduction.data.db.ExternalBreakEntity
 import com.pace.reduction.data.db.PaceDatabase
-import com.pace.reduction.data.db.TriggerPlaceEntity
 import com.pace.reduction.data.db.UrgeSessionEntity
 import com.pace.reduction.data.backup.AchievementBackup
 import com.pace.reduction.data.backup.ExternalBreakBackup
@@ -29,7 +28,6 @@ import com.pace.reduction.data.backup.PaceBackup
 import com.pace.reduction.data.backup.PaceBackupValidator
 import com.pace.reduction.data.backup.PlanBackup
 import com.pace.reduction.data.backup.SnapshotBackup
-import com.pace.reduction.data.backup.TriggerPlaceBackup
 import com.pace.reduction.data.backup.UrgeBackup
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
@@ -40,7 +38,6 @@ import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.ReminderIntensity
 import com.pace.reduction.domain.model.PacingStatus
 import com.pace.reduction.domain.model.ThemeMode
-import com.pace.reduction.domain.model.TriggerPlace
 import com.pace.reduction.domain.model.UrgeSession
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.AdaptiveSpacing
@@ -104,10 +101,6 @@ class PaceRepository(
 
     val achievements: Flow<List<Achievement>> = dao.observeAchievements().map { achievements ->
         achievements.map { it.toDomain() }
-    }
-
-    val triggerPlaces: Flow<List<TriggerPlace>> = dao.observeTriggerPlaces().map { places ->
-        places.map { it.toDomain() }
     }
 
     val aiSettings: Flow<AiSettings> = preferencesStore.data.map { preferences ->
@@ -396,59 +389,6 @@ class PaceRepository(
         return id
     }
 
-    suspend fun saveTriggerPlace(
-        id: String? = null,
-        label: String,
-        latitude: Double,
-        longitude: Double,
-        radiusMeters: Int,
-        enabled: Boolean = true,
-        automaticCueEnabled: Boolean = false,
-    ): String {
-        val existing = triggerPlaces.first()
-        require(existing.size < 20 || id != null) { "Maximum trigger places reached" }
-        val resolvedId = id ?: UUID.randomUUID().toString()
-        dao.upsertTriggerPlace(
-            TriggerPlaceEntity(
-                id = resolvedId,
-                label = label.trim().take(80).ifBlank { "Trigger place" },
-                latitudeRounded = roundCoordinate(latitude),
-                longitudeRounded = roundCoordinate(longitude),
-                radiusMeters = radiusMeters.coerceIn(100, 500),
-                enabled = enabled,
-                automaticCueEnabled = automaticCueEnabled,
-                createdAtEpochMs = clock.millis(),
-            ),
-        )
-        preferencesStore.updateData { current -> current.toBuilder().setTriggerPlacesEnabled(true).build() }
-        return resolvedId
-    }
-
-    suspend fun updateTriggerPlace(id: String, label: String, enabled: Boolean, automaticCueEnabled: Boolean) {
-        val place = triggerPlaces.first().firstOrNull { it.id == id } ?: return
-        dao.upsertTriggerPlace(
-            TriggerPlaceEntity(
-                id = place.id,
-                label = label.trim().take(80).ifBlank { place.label },
-                latitudeRounded = place.latitudeRounded,
-                longitudeRounded = place.longitudeRounded,
-                radiusMeters = place.radiusMeters,
-                enabled = enabled,
-                automaticCueEnabled = automaticCueEnabled,
-                createdAtEpochMs = clock.millis(),
-            ),
-        )
-    }
-
-    suspend fun deleteTriggerPlace(id: String): Int {
-        val result = dao.deleteTriggerPlace(id)
-        return result
-    }
-
-    suspend fun deleteAllTriggerPlaces() {
-        dao.deleteAllTriggerPlaces()
-    }
-
     suspend fun saveAiSettings(enabled: Boolean, apiKey: String, model: String, proactiveNudges: Boolean) {
         val trimmedKey = apiKey.trim().take(MAX_API_KEY_CHARS)
         preferencesStore.updateData { current ->
@@ -486,6 +426,23 @@ class PaceRepository(
      * True when an unprompted check-in is due: enabled, past the chosen interval, outside quiet
      * hours, and within the shared notification budget.
      */
+    private fun partOfDay(hour: Int): String = when (hour) {
+        in 5..8 -> "early morning"
+        in 9..11 -> "late morning"
+        in 12..13 -> "midday"
+        in 14..17 -> "afternoon"
+        in 18..21 -> "evening"
+        else -> "late night"
+    }
+
+    /** Handles windows that wrap past midnight, e.g. 22:00 to 01:00. */
+    private fun isInHighUrgeWindow(plan: PlanSettings, minuteOfDay: Int): Boolean {
+        if (!plan.highUrgeWindowEnabled) return false
+        val start = plan.highUrgeStartMinutes
+        val end = plan.highUrgeEndMinutes
+        return if (start <= end) minuteOfDay in start..end else minuteOfDay >= start || minuteOfDay <= end
+    }
+
     suspend fun claimCheckup(): Boolean {
         val ai = aiSettings.first()
         if (!ai.isReady || !ai.checkupsEnabled) return false
@@ -546,6 +503,18 @@ class PaceRepository(
 
     suspend fun clearCoachMessages() = dao.deleteAllCoachMessages()
 
+    /**
+     * The widget fits roughly three short lines. Rather than clipping mid-word, fall back to the
+     * first sentence, and give up entirely if even that is too long — a stale line beats a broken one.
+     */
+    internal fun fitToWidget(raw: String): String? {
+        val cleaned = raw.trim().trim('"').replace(Regex("\\s+"), " ")
+        if (cleaned.isEmpty()) return null
+        if (cleaned.length <= MAX_WIDGET_QUOTE_CHARS) return cleaned
+        val firstSentence = cleaned.split(Regex("(?<=[.!?])\\s"), limit = 2).first().trim()
+        return firstSentence.takeIf { it.isNotEmpty() && it.length <= MAX_WIDGET_QUOTE_CHARS }
+    }
+
     /** True when the widget's line is older than an hour and worth replacing. */
     suspend fun widgetQuoteIsStale(): Boolean {
         if (!aiSettings.first().isReady) return false
@@ -554,8 +523,7 @@ class PaceRepository(
     }
 
     suspend fun saveWidgetQuote(quote: String) {
-        val trimmed = quote.trim().take(180)
-        if (trimmed.isEmpty()) return
+        val trimmed = fitToWidget(quote) ?: return
         widgetStore.updateData { current ->
             current.toBuilder()
                 .setQuote(trimmed)
@@ -583,6 +551,7 @@ class PaceRepository(
             quitDate = plan.quitDate,
         )
         val lastLog = logs.filter { it.reversedAt == null }.maxByOrNull { it.occurredAt }?.occurredAt
+        val zoned = now.atZone(zone)
         return CoachContext(
             countToday = today.count,
             ceiling = today.ceiling,
@@ -603,6 +572,11 @@ class PaceRepository(
                 .map { it.key.replace('_', ' ') },
             personalReason = plan.personalReason,
             tone = plan.coachingTone.name,
+            localTime = zoned.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+            dayOfWeek = zoned.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH),
+            partOfDay = partOfDay(zoned.hour),
+            timeZone = zone.id,
+            inHighUrgeWindow = isInHighUrgeWindow(plan, zoned.hour * 60 + zoned.minute),
         )
     }
 
@@ -758,12 +732,6 @@ class PaceRepository(
                 )
             },
             achievements = dao.allAchievements().map { AchievementBackup(it.badgeId, it.unlockedAtEpochMs, it.evidenceJson) },
-            triggerPlaces = dao.allTriggerPlaces().map {
-                TriggerPlaceBackup(
-                    it.id, it.label, it.latitudeRounded, it.longitudeRounded, it.radiusMeters,
-                    it.enabled, it.automaticCueEnabled, it.createdAtEpochMs,
-                )
-            },
             externalBreaks = dao.allExternalBreaks().map {
                 ExternalBreakBackup(it.id, it.gameId, it.startedAtEpochMs, it.returnedAtEpochMs, it.urgeSessionId)
             },
@@ -781,7 +749,6 @@ class PaceRepository(
             dao.deleteAllDailySnapshots()
             dao.deleteAllAchievements()
             dao.deleteAllPersonalRecords()
-            dao.deleteAllTriggerPlaces()
             dao.deleteAllExternalBreaks()
             dao.deleteAllCoachMessages()
             backup.logs.forEach {
@@ -804,14 +771,6 @@ class PaceRepository(
                 )
             }
             backup.achievements.forEach { dao.insertAchievement(AchievementEntity(it.badgeId, it.unlockedAtEpochMs, it.evidenceJson)) }
-            backup.triggerPlaces.forEach {
-                dao.upsertTriggerPlace(
-                    TriggerPlaceEntity(
-                        it.id, it.label, it.latitudeRounded, it.longitudeRounded, it.radiusMeters,
-                        it.enabled, it.automaticCueEnabled, it.createdAtEpochMs,
-                    ),
-                )
-            }
             backup.externalBreaks.forEach {
                 dao.upsertExternalBreak(ExternalBreakEntity(it.id, it.gameId, it.startedAtEpochMs, it.returnedAtEpochMs, it.urgeSessionId))
             }
@@ -856,7 +815,6 @@ class PaceRepository(
         require(backup.logs.map { it.id }.size == backup.logs.map { it.id }.distinct().size)
         require(backup.urgeSessions.map { it.id }.size == backup.urgeSessions.map { it.id }.distinct().size)
         require(backup.dailySnapshots.map { it.localDate }.size == backup.dailySnapshots.map { it.localDate }.distinct().size)
-        require(backup.triggerPlaces.map { it.id }.size == backup.triggerPlaces.map { it.id }.distinct().size)
         val latestAllowed = clock.millis() + 24 * 60 * 60 * 1_000L
         backup.logs.forEach {
             require(it.id.isNotBlank() && it.occurredAtEpochMs in 0..latestAllowed && it.recordedAtEpochMs in 0..latestAllowed)
@@ -871,10 +829,6 @@ class PaceRepository(
         backup.dailySnapshots.forEach {
             require(runCatching { LocalDate.parse(it.localDate) }.isSuccess)
             require(it.baseline in 1..100 && it.ceiling in 0..100 && it.minimumGapMinutes in 15..360)
-        }
-        backup.triggerPlaces.forEach {
-            require(it.label.length in 1..80 && it.latitudeRounded in -90.0..90.0 && it.longitudeRounded in -180.0..180.0)
-            require(it.radiusMeters in 100..500)
         }
     }
 
@@ -1140,8 +1094,6 @@ class PaceRepository(
         .setReminderIntensity(plan.reminderIntensity.toProto())
         .setNotificationPrivate(plan.notificationPrivate)
         .setHapticsEnabled(plan.hapticsEnabled)
-        .setWeatherEnabled(plan.weatherEnabled)
-        .setTriggerPlacesEnabled(plan.triggerPlacesEnabled)
         .setThemeMode(plan.themeMode.toProto())
         .setQuitMode(plan.quitMode)
         .setQuitDate(plan.quitDate?.toString().orEmpty())
@@ -1149,6 +1101,9 @@ class PaceRepository(
         .setAdaptiveSpacingStepMinutes(plan.adaptiveSpacingStepMinutes.coerceIn(5, 60))
         .setAdaptiveSpacingIntervalDays(plan.adaptiveSpacingIntervalDays.coerceIn(1, 30))
         .setAdaptiveSpacingMaxMinutes(plan.adaptiveSpacingMaxMinutes.coerceIn(30, 720))
+        .setHighUrgeWindowEnabled(plan.highUrgeWindowEnabled)
+        .setHighUrgeStartMinutes(plan.highUrgeStartMinutes.coerceIn(0, 1439))
+        .setHighUrgeEndMinutes(plan.highUrgeEndMinutes.coerceIn(0, 1439))
         .build()
 
     private fun toDomain(proto: PacePreferences): PlanSettings = PlanSettings(
@@ -1182,8 +1137,6 @@ class PaceRepository(
         },
         notificationPrivate = proto.notificationPrivate,
         hapticsEnabled = proto.hapticsEnabled,
-        weatherEnabled = proto.weatherEnabled,
-        triggerPlacesEnabled = proto.triggerPlacesEnabled,
         themeMode = when (proto.themeMode) {
             ThemeModeProto.THEME_MODE_LIGHT -> ThemeMode.LIGHT
             ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK
@@ -1196,6 +1149,9 @@ class PaceRepository(
         adaptiveSpacingStepMinutes = proto.adaptiveSpacingStepMinutes.takeIf { it > 0 } ?: 15,
         adaptiveSpacingIntervalDays = proto.adaptiveSpacingIntervalDays.takeIf { it > 0 } ?: 7,
         adaptiveSpacingMaxMinutes = proto.adaptiveSpacingMaxMinutes.takeIf { it > 0 } ?: 240,
+        highUrgeWindowEnabled = proto.highUrgeWindowEnabled,
+        highUrgeStartMinutes = proto.highUrgeStartMinutes.takeIf { it > 0 } ?: (15 * 60),
+        highUrgeEndMinutes = proto.highUrgeEndMinutes.takeIf { it > 0 } ?: (18 * 60),
     )
 
     private fun PacePreferences.effectiveDailyCeiling(): Int {
@@ -1248,16 +1204,6 @@ class PaceRepository(
         badgeId = badgeId,
         unlockedAt = Instant.ofEpochMilli(unlockedAtEpochMs),
         evidence = evidenceJson,
-    )
-
-    private fun TriggerPlaceEntity.toDomain() = TriggerPlace(
-        id = id,
-        label = label,
-        latitudeRounded = latitudeRounded,
-        longitudeRounded = longitudeRounded,
-        radiusMeters = radiusMeters,
-        enabled = enabled,
-        automaticCueEnabled = automaticCueEnabled,
     )
 
     private fun UrgeSessionEntity.toDomain() = UrgeSession(
@@ -1330,7 +1276,6 @@ class PaceRepository(
     private fun Set<String>.toTagsJson(): String = sorted()
         .joinToString(",", prefix = "[", postfix = "]") { "\"${it.replace("\"", "")}\"" }
 
-    private fun roundCoordinate(value: Double): Double = kotlin.math.round(value * 100.0) / 100.0
 
     private fun CoachMessageEntity.toDomain() = CoachMessage(
         id = id,
@@ -1346,6 +1291,7 @@ class PaceRepository(
         const val MAX_SYSTEM_PROMPT_CHARS = 2_000
 
         const val QUOTE_REFRESH_MS = 60 * 60 * 1_000L
+        const val MAX_WIDGET_QUOTE_CHARS = 90
 
         /** Fire a nudge when the next planned window is this close. */
         const val NUDGE_LEAD_MINUTES = 20L

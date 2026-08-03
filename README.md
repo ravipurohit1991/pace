@@ -1,8 +1,8 @@
 # Pace — track less, quit for good
 
 Pace is a private Android companion for cutting down and stopping smoking. It pairs honest tracking with an
-**AI coach powered by Ollama Cloud** that talks you through cravings, hands you a riddle when you need a
-distraction, and nudges you *before* your next scheduled cigarette instead of after.
+**AI coach powered by Ollama Cloud** that talks you through the hard minutes, proposes something concrete to
+do, and reaches out *before* your next scheduled window instead of after.
 
 Your history never leaves the device. The coach is opt-in, uses **your own** Ollama API key, and sends only the
 handful of numbers already on your screen.
@@ -21,10 +21,15 @@ A ceiling, not a quota. One tap logs a cigarette, with a 12-second undo from the
 widget. Minimum spacing, a morning hold, and quiet hours shape the day; a hard day never rewrites history,
 and a lower ceiling always takes effect tomorrow rather than retroactively.
 
-### An AI coach that knows your numbers
+### A coach that never says the word
 
-The coach runs on Ollama Cloud with the model you pick. It talks like a friend, not a helpdesk — quirky,
-warm, emoji where they land:
+Naming the substance is itself a trigger — cue reactivity is well established — so the coach is built to
+never say cigarette, smoking, nicotine, craving or quitting. Not once, not even if you say it first. The
+grounded figures it receives are phrased the same way: moments, waits, clean stretches. If you raise it, it
+answers the feeling underneath and moves the conversation somewhere else.
+
+It runs on Ollama Cloud with the model you pick, and talks like a friend rather than a helpdesk. Four
+personalities ship in the box — Friendly, Bubbly, Deadpan, Steady — and the prompt stays fully editable:
 
 > ugh the 3pm craving is hitting hard
 >
@@ -33,20 +38,28 @@ warm, emoji where they land:
 > later. Got a favourite jam to spin?
 
 Every message replays the recent conversation, so it follows the thread instead of answering each line cold.
-Before each reply Pace grounds it in your own local stats — count against ceiling, minutes to the next
-window, smoke-free run, cigarettes avoided, money saved, your most frequent triggers, and the reason you
-wrote down.
+Before each reply Pace grounds it in your own local figures — count against ceiling, minutes to the next
+window, the current clean stretch, moments resisted, money kept, the situations you find hardest, your
+stated reason, and the local time and day so replies fit the hour you are actually in. Mark your hardest
+stretch of the day on the Plan screen and it leans in harder then.
 
 | Craving conversation | Distraction on demand | Coach settings |
 | --- | --- | --- |
 | ![Coach chat](docs/screenshots/03-coach.png) | ![Riddle](docs/screenshots/04-coach-riddle.png) | ![Coach settings](docs/screenshots/11-coach-settings.png) |
 
 Replies stream token by token and can be stopped mid-sentence. **Riddle me** pulls a two-minute
-lateral-thinking puzzle that never mentions smoking — the point is to occupy your head until the urge passes.
+lateral-thinking puzzle to occupy your head until the moment passes.
 
-The tune icon on the Coach screen opens its settings: **edit the system prompt** to make the coach whoever
-you want (with one tap back to the default), **toggle whether your smoking stats are shared** with the model,
-and set how often it checks in on you.
+The tune icon on the Coach screen opens its settings: pick a personality or **edit the system prompt**
+outright, **toggle whether your stats are shared** with the model, and set how often it checks in.
+
+### Ask for a hand and get an actual plan
+
+A blank five-minute countdown asks you to invent a distraction at the moment you are least able to. Instead
+the Toolkit asks the coach for one specific thing to do, and offers to time that:
+
+> In the next 5 minutes, raid the kitchen for the weirdest utensil you can find — maybe that banana slicer
+> or a novelty ice-cream fork — and give it a dramatic backstory you'll record in a quick voice memo. 🌱
 
 ### It reaches out first
 
@@ -66,6 +79,19 @@ ceiling — the gap increases by one step, up to a maximum you choose. A hard da
 never pushes the target further away. The Plan screen shows the current gap and how many steady days remain
 before the next increase.
 
+### Hundreds of badges, starting from your first hour
+
+Ten families of tiered milestones — hours held, clear-day streaks, moments resisted, money kept, time
+reclaimed and more — over 200 badges in total. The low tiers are the point: three hours in, you have already
+earned something rather than staring at a distant milestone. Progress groups them by family with the next
+threshold in sight.
+
+### Fix the record when it's wrong
+
+Settings → Edit history steps through any past day so you can add a moment you forgot to log or delete one
+counted twice. Editing a past day backfills its plan snapshot, so a corrected day starts counting toward
+your averages, steady days and the adaptive gap.
+
 ### Watch your body repair itself
 
 Twelve recovery milestones on the published CDC/NHS timeline, from *heart rate settles* at 20 minutes to
@@ -75,19 +101,19 @@ whole ladder. Alongside it: cigarettes avoided against your baseline, money save
 
 ### An offline toolkit
 
-A five-minute pause timer that survives leaving the app, urge check-ins with before/after strength,
 5-4-3-2-1 grounding, a scene-change reset, sequence and memory games, a share-sheet message to a trusted
-person, and vetted puzzle links. All of it works with no network and no AI key.
+person, and vetted puzzle links — plus the plain timer as a fallback. All of it works with no network and
+no AI key.
 
 | Onboarding | Progress | Toolkit |
 | --- | --- | --- |
 | ![Onboarding](docs/screenshots/01-onboarding.png) | ![Progress](docs/screenshots/05-progress.png) | ![Toolkit](docs/screenshots/08-toolkit.png) |
 
-### Badges and a widget worth keeping
+### A widget worth keeping
 
-Badges are a colour-coded grid — earned ones lit, the rest dimmed so there is something to aim at. The
-home-screen widget carries the same information at a glance: today's count against the ceiling, a
-proportional ceiling meter, your current gap, your badge count, and one-tap log/undo.
+Time until your next window as the headline figure, today's count against the ceiling, a proportional
+ceiling meter, clean-stretch and money pills, your badge count, a line that refreshes hourly, and icon-only
+log/undo actions. It re-renders exactly when a window ends, so the countdown is never stale.
 
 | Badges | Home-screen widget |
 | --- | --- |
@@ -180,7 +206,7 @@ holds the singletons.
 | Presentation | `PaceViewModel.kt` | `PaceUiState` from combined flows, plus transient `CoachUiState` for streaming |
 | Domain | `domain/` | Pacing, progress, quit metrics, badge rules, coach prompt construction |
 | Data | `data/` | Room database, Proto DataStore preferences, JSON backup import/export |
-| Platform | `core/` | Ollama client, Keystore vault, notifications, geofencing, weather, link allowlist |
+| Platform | `core/` | Ollama client, Keystore vault, notifications, link allowlist |
 
 Notable pieces:
 
@@ -212,7 +238,8 @@ round trip through the coach. Minimum supported version is Android 8 / API 26.
 ## Privacy
 
 No account, backend, analytics, advertising, or telemetry. Android cloud backup and device transfer are off.
-Cigarette records, notes, trigger places, and chat history live in app-private Room and DataStore storage.
+Cigarette records, notes and chat history live in app-private Room and DataStore storage. Pace requests no
+location permission at all.
 Export happens only to a folder you choose. See [PRIVACY.md](PRIVACY.md) for the full statement and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licenses.
 
@@ -228,5 +255,4 @@ Approach informed by the open-source quit-smoking community, including
 [awesome-smoking](https://github.com/tshwangq/awesome-smoking),
 [quit-smoking-instantly](https://github.com/xiaolai/quit-smoking-instantly), and
 [Quit-Smoke-App](https://github.com/trizin/Quit-Smoke-App). Recovery timings follow published CDC and NHS
-cessation guidance. Weather by [Open-Meteo](https://open-meteo.com); puzzles by Gabriele Cirulli and
-Simon Tatham.
+cessation guidance. Puzzles by Gabriele Cirulli and Simon Tatham.

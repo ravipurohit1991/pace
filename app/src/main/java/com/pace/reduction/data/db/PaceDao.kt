@@ -79,21 +79,6 @@ interface PaceDao {
     suspend fun allAchievements(): List<AchievementEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertTriggerPlace(place: TriggerPlaceEntity)
-
-    @Query("SELECT * FROM trigger_places ORDER BY createdAtEpochMs ASC")
-    fun observeTriggerPlaces(): Flow<List<TriggerPlaceEntity>>
-
-    @Query("SELECT * FROM trigger_places ORDER BY createdAtEpochMs ASC")
-    suspend fun allTriggerPlaces(): List<TriggerPlaceEntity>
-
-    @Query("DELETE FROM trigger_places WHERE id = :id")
-    suspend fun deleteTriggerPlace(id: String): Int
-
-    @Query("DELETE FROM trigger_places")
-    suspend fun deleteAllTriggerPlaces()
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertExternalBreak(externalBreak: ExternalBreakEntity)
 
     @Query("SELECT * FROM external_breaks ORDER BY startedAtEpochMs ASC")

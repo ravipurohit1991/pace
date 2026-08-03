@@ -76,6 +76,9 @@ message PacePreferences {
   bool ollama_checkups_enabled = 51;
   int32 ollama_checkup_interval_minutes = 52;
   int64 last_checkup_epoch_ms = 53;
+  bool high_urge_window_enabled = 54;
+  int32 high_urge_start_minutes = 55;
+  int32 high_urge_end_minutes = 56;
 }
 
 enum WidgetStateProto {
