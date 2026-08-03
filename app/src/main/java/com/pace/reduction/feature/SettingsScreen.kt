@@ -1,0 +1,356 @@
+package com.pace.reduction.feature
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pace.reduction.BuildConfig
+import com.pace.reduction.PaceUiState
+import com.pace.reduction.PaceViewModel
+import com.pace.reduction.R
+import com.pace.reduction.core.network.OllamaClient
+import com.pace.reduction.domain.model.PlanSettings
+import com.pace.reduction.domain.model.ReminderIntensity
+import com.pace.reduction.domain.model.ThemeMode
+import java.time.LocalDate
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SettingsScreen(
+    uiState: PaceUiState,
+    viewModel: PaceViewModel,
+    onSave: (PlanSettings) -> Unit,
+    onExport: (android.net.Uri) -> Unit,
+    onImport: (android.net.Uri) -> Unit,
+    onDeleteAll: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var theme by rememberSaveable(uiState.settings.themeMode) { mutableStateOf(uiState.settings.themeMode) }
+    var reminder by rememberSaveable(uiState.settings.reminderIntensity) { mutableStateOf(uiState.settings.reminderIntensity) }
+    var haptics by rememberSaveable(uiState.settings.hapticsEnabled) { mutableStateOf(uiState.settings.hapticsEnabled) }
+    var deleteStepTwo by rememberSaveable { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
+    var notificationEducation by rememberSaveable { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri -> uri?.let(onExport) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> pendingImport = uri }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.settings_title)) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+                }
+            },
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.appearance_title), style = MaterialTheme.typography.titleLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { option ->
+                            FilterChip(
+                                selected = theme == option,
+                                onClick = { theme = option },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            when (option) {
+                                                ThemeMode.SYSTEM -> R.string.theme_system
+                                                ThemeMode.LIGHT -> R.string.theme_light
+                                                ThemeMode.DARK -> R.string.theme_dark
+                                            },
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.haptics), modifier = Modifier.weight(1f))
+                        Switch(checked = haptics, onCheckedChange = { haptics = it })
+                    }
+                }
+            }
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.notifications_title), style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        stringResource(if (notificationsGranted) R.string.notifications_granted else R.string.notifications_not_granted),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ReminderIntensity.entries.forEach { option ->
+                            FilterChip(
+                                selected = reminder == option,
+                                onClick = { reminder = option },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            when (option) {
+                                                ReminderIntensity.OFF -> R.string.reminder_off
+                                                ReminderIntensity.GENTLE -> R.string.reminder_gentle
+                                                ReminderIntensity.STANDARD -> R.string.reminder_standard
+                                            },
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    if (!notificationsGranted && !notificationEducation) {
+                        OutlinedButton(onClick = { notificationEducation = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.Notifications, contentDescription = null)
+                            Text(stringResource(R.string.explain_notifications))
+                        }
+                    } else if (!notificationsGranted) {
+                        Text(stringResource(R.string.notification_education_body))
+                        Button(
+                            onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.enable_notifications)) }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            })
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.open_system_notification_settings)) }
+                }
+            }
+            item { AiCoachSection(uiState, viewModel) }
+            item {
+                Button(
+                    onClick = { onSave(uiState.settings.copy(themeMode = theme, reminderIntensity = reminder, hapticsEnabled = haptics)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.save_settings)) }
+            }
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.data_controls_title), style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.data_controls_body))
+                    OutlinedButton(
+                        onClick = { exportLauncher.launch("pace-backup-${LocalDate.now()}.json") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.FileUpload, contentDescription = null)
+                        Text(stringResource(R.string.export_json))
+                    }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.FileDownload, contentDescription = null)
+                        Text(stringResource(R.string.import_json))
+                    }
+                    if (pendingImport != null) {
+                        Text(stringResource(R.string.import_confirmation))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                pendingImport?.let(onImport)
+                                pendingImport = null
+                            }) { Text(stringResource(R.string.import_confirm)) }
+                            OutlinedButton(onClick = { pendingImport = null }) { Text(stringResource(R.string.cancel)) }
+                        }
+                    }
+                }
+            }
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.privacy_title), style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.privacy_network_summary))
+                    Text(stringResource(R.string.privacy_summary))
+                    Text(stringResource(R.string.medical_disclaimer))
+                    Text(stringResource(R.string.licenses_summary), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.version_value, BuildConfig.VERSION_NAME, BuildConfig.BUILD_TYPE))
+                }
+            }
+            item {
+                SectionCard {
+                    Text(
+                        stringResource(R.string.delete_all_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text(stringResource(R.string.delete_all_body))
+                    if (!deleteStepTwo) {
+                        OutlinedButton(onClick = { deleteStepTwo = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.DeleteForever, contentDescription = null)
+                            Text(stringResource(R.string.delete_all_first_step))
+                        }
+                    } else {
+                        Text(stringResource(R.string.delete_all_confirmation), color = MaterialTheme.colorScheme.error)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onDeleteAll, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.delete_all_confirm))
+                            }
+                            OutlinedButton(onClick = { deleteStepTwo = false }, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Ollama Cloud key entry, model picker and nudge toggle. */
+@Composable
+private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
+    val coach by viewModel.coachState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val saved = uiState.ai
+    var enabled by rememberSaveable(saved.enabled) { mutableStateOf(saved.enabled) }
+    var nudges by rememberSaveable(saved.proactiveNudges) { mutableStateOf(saved.proactiveNudges) }
+    var model by rememberSaveable(saved.model) { mutableStateOf(saved.model) }
+    var apiKey by rememberSaveable { mutableStateOf("") }
+    var revealKey by rememberSaveable { mutableStateOf(false) }
+
+    val models = coach.verifiedModels.ifEmpty { OllamaClient.SUGGESTED_MODELS }
+
+    SectionCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.ai_settings_title), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(R.string.ai_settings_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = { enabled = it })
+        }
+
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { apiKey = it.trim().take(256) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(stringResource(R.string.ai_api_key)) },
+            placeholder = { Text(if (saved.apiKey.isNotBlank()) "••••••••" else "") },
+            supportingText = {
+                if (saved.apiKey.isNotBlank() && apiKey.isBlank()) {
+                    Text(stringResource(R.string.ai_api_key_saved))
+                }
+            },
+            visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { revealKey = !revealKey }) {
+                    Icon(
+                        if (revealKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = null,
+                    )
+                }
+            },
+            singleLine = true,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { viewModel.verifyApiKey(apiKey.ifBlank { saved.apiKey }) },
+                enabled = !coach.verifying && (apiKey.isNotBlank() || saved.apiKey.isNotBlank()),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(if (coach.verifying) R.string.ai_verifying else R.string.ai_verify))
+            }
+            OutlinedButton(
+                onClick = { openTrustedTab(context, "https://ollama.com/settings/keys") },
+                modifier = Modifier.weight(1f),
+            ) { Text(stringResource(R.string.ai_get_key)) }
+        }
+
+        coach.error?.let { error ->
+            Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+
+        Text(stringResource(R.string.ai_model), style = MaterialTheme.typography.titleMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            models.take(8).forEach { option ->
+                FilterChip(
+                    selected = model == option,
+                    onClick = { model = option },
+                    label = { Text(option) },
+                )
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.ai_nudges), modifier = Modifier.weight(1f))
+            Switch(checked = nudges, onCheckedChange = { nudges = it })
+        }
+
+        Button(
+            onClick = {
+                viewModel.saveAiSettings(enabled, apiKey, model, nudges)
+                apiKey = ""
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(stringResource(R.string.save_settings)) }
+
+        if (saved.apiKey.isNotBlank()) {
+            OutlinedButton(onClick = viewModel::clearApiKey, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.ai_clear_key))
+            }
+        }
+    }
+}
