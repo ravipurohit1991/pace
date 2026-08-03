@@ -51,6 +51,19 @@ class CoachNudgeWorker(context: Context, parameters: WorkerParameters) : Corouti
     }.fold({ Result.success() }, { Result.retry() })
 }
 
+/**
+ * Unprompted check-in. Unlike the nudge, this is not tied to an approaching window — it just keeps
+ * the coach present through the day with something funny or curious while the app is closed.
+ */
+class CoachCheckupWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result = runCatching {
+        if (!PaceNotifications.canPost(applicationContext)) return@runCatching
+        if (!applicationContext.repository().claimCheckup()) return@runCatching
+        val message = runCatching { applicationContext.coachService().checkup() }.getOrDefault("")
+        if (message.isNotBlank()) PaceNotifications.postCoachCheckup(applicationContext, message)
+    }.fold({ Result.success() }, { Result.retry() })
+}
+
 class WidgetRefreshWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = runCatching {
         applicationContext.repository().refreshWidgetSnapshot()
@@ -87,6 +100,18 @@ object PaceWorkScheduler {
             "pace-widget-refresh",
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<WidgetRefreshWorker>(6, TimeUnit.HOURS).addTag(TAG).build(),
+        )
+        workManager.enqueueUniquePeriodicWork(
+            "pace-coach-checkup",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<CoachCheckupWorker>(30, TimeUnit.MINUTES)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .addTag(TAG)
+                .build(),
         )
         workManager.enqueueUniquePeriodicWork(
             "pace-coach-nudge",

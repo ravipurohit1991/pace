@@ -23,24 +23,48 @@ and a lower ceiling always takes effect tomorrow rather than retroactively.
 
 ### An AI coach that knows your numbers
 
-The coach runs on Ollama Cloud with the model you pick. Before each reply Pace grounds it in your own local
-stats — count against ceiling, minutes to the next window, smoke-free run, cigarettes avoided, money saved,
-your most frequent triggers, and the reason you wrote down.
+The coach runs on Ollama Cloud with the model you pick. It talks like a friend, not a helpdesk — quirky,
+warm, emoji where they land:
 
-| Craving conversation | Distraction on demand |
-| --- | --- |
-| ![Coach chat](docs/screenshots/03-coach.png) | ![Riddle](docs/screenshots/04-coach-riddle.png) |
+> ugh the 3pm craving is hitting hard
+>
+> Whoa, the 3pm cravings are like a pop-up ad — always right when you're scrolling! How about a 2-minute
+> "wiggle-dance" to a random song? 🎶 It burns calories, not cigarettes, and you can brag about your moves
+> later. Got a favourite jam to spin?
+
+Every message replays the recent conversation, so it follows the thread instead of answering each line cold.
+Before each reply Pace grounds it in your own local stats — count against ceiling, minutes to the next
+window, smoke-free run, cigarettes avoided, money saved, your most frequent triggers, and the reason you
+wrote down.
+
+| Craving conversation | Distraction on demand | Coach settings |
+| --- | --- | --- |
+| ![Coach chat](docs/screenshots/03-coach.png) | ![Riddle](docs/screenshots/04-coach-riddle.png) | ![Coach settings](docs/screenshots/11-coach-settings.png) |
 
 Replies stream token by token and can be stopped mid-sentence. **Riddle me** pulls a two-minute
 lateral-thinking puzzle that never mentions smoking — the point is to occupy your head until the urge passes.
 
-### Nudges before the urge, not after
+The tune icon on the Coach screen opens its settings: **edit the system prompt** to make the coach whoever
+you want (with one tap back to the default), **toggle whether your smoking stats are shared** with the model,
+and set how often it checks in on you.
 
-When your next planned window is within 20 minutes, a background worker asks the model for one line under
-20 words, tailored to your numbers, and posts it as a notification. Tapping **Reply** opens the chat so the
-conversation continues where the notification left off. If the network or model is unavailable, a built-in
-line is used instead, so the cue still arrives. Nudges obey quiet hours, a daily cap, and a cooldown, and
-never tell you that it is time to smoke.
+### It reaches out first
+
+Two kinds of notification, both written fresh by the model and both opening straight into the chat:
+
+- **Nudges** land when your next planned window is within 20 minutes — one line under 20 words, tailored to
+  your numbers. If the model is unreachable, built-in copy is used so the cue still arrives.
+- **Check-ins** arrive on your chosen interval (hourly to every six hours) whether or not a craving is due,
+  with something funny or curious to snag your attention while Pace is closed.
+
+Both obey quiet hours, a daily cap and a cooldown, and neither ever tells you it is time to smoke.
+
+### The gap widens as you earn it
+
+Set a starting minimum gap and Pace grows it for you: every *N* steady days — days finished at or below your
+ceiling — the gap increases by one step, up to a maximum you choose. A hard day simply earns nothing; it
+never pushes the target further away. The Plan screen shows the current gap and how many steady days remain
+before the next increase.
 
 ### Watch your body repair itself
 
@@ -58,6 +82,16 @@ person, and vetted puzzle links. All of it works with no network and no AI key.
 | Onboarding | Progress | Toolkit |
 | --- | --- | --- |
 | ![Onboarding](docs/screenshots/01-onboarding.png) | ![Progress](docs/screenshots/05-progress.png) | ![Toolkit](docs/screenshots/08-toolkit.png) |
+
+### Badges and a widget worth keeping
+
+Badges are a colour-coded grid — earned ones lit, the rest dimmed so there is something to aim at. The
+home-screen widget carries the same information at a glance: today's count against the ceiling, a
+proportional ceiling meter, your current gap, your badge count, and one-tap log/undo.
+
+| Badges | Home-screen widget |
+| --- | --- |
+| ![Badges](docs/screenshots/09-badges.png) | ![Widget](docs/screenshots/10-widget.png) |
 
 ---
 
@@ -109,6 +143,27 @@ Install on a connected device or emulator:
 The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk`. If SDK discovery fails, create a
 git-ignored `local.properties` with `sdk.dir=` pointing at your Android SDK.
 
+### Private builds: bring your key and your history
+
+For a personal build you can bake in your own key and carry over history from another tracker, so a fresh
+install needs no setup. Add any of these to **`local.properties`** — the file is git-ignored, so none of it
+can reach the repository:
+
+```properties
+pace.ollamaApiKey=sk-your-own-key
+pace.ollamaModel=gpt-oss:120b
+pace.seedYesterday=7
+pace.seedToday=5
+pace.seedLastTime=14:42
+pace.seedCeiling=10
+pace.seedSpacing=120
+```
+
+On first launch Pace spreads those cigarettes across plausible waking hours, ending exactly on
+`seedLastTime`, writes daily snapshots so the history counts toward streaks and averages, applies the plan,
+and enables the coach. Seeding is recorded in preferences, so reinstalling over existing data never
+duplicates anything. Omit the keys and a clean checkout builds a normal empty app.
+
 The release build enables R8 minification and resource shrinking. Signing material is deliberately absent
 from this repository; supply your own `keystore.properties` (git-ignored) to produce a signed release.
 
@@ -132,9 +187,11 @@ Notable pieces:
 - **`core/network/OllamaClient.kt`** — streaming NDJSON chat, one-shot completions, and model listing.
 - **`core/security/SecretVault.kt`** — AES-GCM wrapping of the API key.
 - **`core/coach/CoachService.kt`** — the only path from local data to the network; a no-op until you opt in.
-- **`domain/CoachPrompt.kt`** — the persona and the exact facts each request may include.
+- **`domain/CoachPrompt.kt`** — the default persona and the exact facts each request may include.
 - **`domain/QuitProgress.kt`** — smoke-free duration, streaks, avoided cigarettes, recovery milestones.
-- **`worker/PaceWorkers.kt`** — the periodic nudge check plus rollover, widget refresh, and badge review.
+- **`domain/AdaptiveSpacing.kt`** — how the minimum gap grows with steady days.
+- **`data/seed/ProvisioningSeeder.kt`** — one-time import of a private build's key and history.
+- **`worker/PaceWorkers.kt`** — nudge and check-in workers plus rollover, widget refresh, badge review.
 
 Outbound HTTPS is restricted to an allowlist in `core/network/SafeLinks.kt`; cleartext traffic is disabled.
 

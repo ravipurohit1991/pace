@@ -1,4 +1,18 @@
 import com.google.protobuf.gradle.id
+import java.util.Properties
+
+/**
+ * Personal provisioning values live in `local.properties`, which is git-ignored. They let an owner
+ * bake their own Ollama key and existing smoking history into a private build. Every key is
+ * optional: absent values compile to empty/zero and the app behaves like a clean install.
+ */
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun localValue(key: String, fallback: String = ""): String =
+    (localProperties.getProperty(key) ?: System.getenv(key.replace('.', '_').uppercase()) ?: fallback).trim()
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,6 +35,15 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        // Provisioning from local.properties (git-ignored). Empty defaults = clean install.
+        buildConfigField("String", "SEED_OLLAMA_KEY", "\"${localValue("pace.ollamaApiKey")}\"")
+        buildConfigField("String", "SEED_OLLAMA_MODEL", "\"${localValue("pace.ollamaModel")}\"")
+        buildConfigField("int", "SEED_YESTERDAY_COUNT", localValue("pace.seedYesterday", "0"))
+        buildConfigField("int", "SEED_TODAY_COUNT", localValue("pace.seedToday", "0"))
+        buildConfigField("String", "SEED_LAST_TIME", "\"${localValue("pace.seedLastTime")}\"")
+        buildConfigField("int", "SEED_CEILING", localValue("pace.seedCeiling", "0"))
+        buildConfigField("int", "SEED_SPACING", localValue("pace.seedSpacing", "0"))
     }
 
     buildTypes {
