@@ -515,6 +515,37 @@ class PaceRepository(
         return firstSentence.takeIf { it.isNotEmpty() && it.length <= MAX_WIDGET_QUOTE_CHARS }
     }
 
+    /**
+     * Widget logging is two-step so a pocket tap cannot invent a cigarette. The first tap arms the
+     * button for [LOG_ARM_WINDOW_MS]; only a second tap inside that window actually logs.
+     *
+     * Returns true when this tap committed a log.
+     */
+    suspend fun armOrCommitWidgetLog(): Boolean {
+        val now = clock.millis()
+        var commit = false
+        widgetStore.updateData { current ->
+            if (current.logArmedUntilEpochMs > now) {
+                commit = true
+                current.toBuilder().clearLogArmedUntilEpochMs().build()
+            } else {
+                current.toBuilder().setLogArmedUntilEpochMs(now + LOG_ARM_WINDOW_MS).build()
+            }
+        }
+        if (!commit) PaceWidget().updateAll(context)
+        return commit
+    }
+
+    /** Drops the armed state once the window lapses, so the button returns to normal. */
+    suspend fun disarmWidgetLog() {
+        val now = clock.millis()
+        val armed = widgetStore.data.first().logArmedUntilEpochMs
+        if (armed in 1..now) {
+            widgetStore.updateData { it.toBuilder().clearLogArmedUntilEpochMs().build() }
+            PaceWidget().updateAll(context)
+        }
+    }
+
     /** True when the widget's line is older than an hour and worth replacing. */
     suspend fun widgetQuoteIsStale(): Boolean {
         if (!aiSettings.first().isReady) return false
@@ -1292,6 +1323,7 @@ class PaceRepository(
 
         const val QUOTE_REFRESH_MS = 60 * 60 * 1_000L
         const val MAX_WIDGET_QUOTE_CHARS = 90
+        const val LOG_ARM_WINDOW_MS = 8_000L
 
         /** Fire a nudge when the next planned window is this close. */
         const val NUDGE_LEAD_MINUTES = 20L

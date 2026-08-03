@@ -238,6 +238,9 @@
     <string name="history_rejected">That time is in the future.</string>
 
     <string name="widget_until_next_label">to next</string>
+    <string name="widget_talk">Talk</string>
+    <string name="widget_log_short">Log</string>
+    <string name="widget_log_confirm">Sure?</string>
     <string name="widget_free_for">%1$s free</string>
     <string name="widget_saved">%1$s saved</string>
     <string name="widget_avoided">%1$d avoided</string>
