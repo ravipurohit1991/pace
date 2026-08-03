@@ -112,4 +112,6 @@ message WidgetSnapshot {
   int32 zero_day_streak = 18;
   string quote = 19;
   int64 quote_generated_epoch_ms = 20;
+  // Set by the first widget log tap; a second tap before this expires commits it.
+  int64 log_armed_until_epoch_ms = 21;
 }

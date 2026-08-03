@@ -2,6 +2,8 @@ package com.pace.reduction.widget
 
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
+import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,6 +17,8 @@ import androidx.glance.GlanceTheme
 import androidx.glance.ColorFilter
 import androidx.glance.ImageProvider
 import androidx.glance.Image
+import androidx.glance.LocalContext
+import androidx.glance.appwidget.AndroidRemoteViews
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -102,7 +106,7 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
             return@Column
         }
 
-        val countdown = countdownLabel(snapshot)
+        val countdownTarget = countdownTargetEpochMs(snapshot)
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
             Column(modifier = GlanceModifier.defaultWeight()) {
@@ -131,23 +135,16 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
                     style = TextStyle(color = OnDark, fontSize = if (compact) 11.sp else 13.sp),
                 )
             }
-            // The headline number people actually want: how long until the next one is due.
-            if (countdown != null) {
+            // The figure people actually want, ticking on its own via a system Chronometer.
+            if (countdownTarget != null) {
                 Column(horizontalAlignment = Alignment.Horizontal.End) {
-                    Text(
-                        text = countdown,
-                        style = TextStyle(
-                            color = OnDark,
-                            fontSize = if (compact) 16.sp else 22.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
+                    LiveCountdown(targetEpochMs = countdownTarget)
                     Text(
                         text = context.getString(R.string.widget_until_next_label),
                         style = TextStyle(color = Muted, fontSize = 10.sp),
                     )
                 }
-            } else if (!compact && snapshot.latestBadgeId.isNotBlank()) {
+            } else if (snapshot.badgeCount > 0) {
                 BadgeChip(context, snapshot)
             }
         }
@@ -170,19 +167,17 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
                 } else {
                     StatPill(text = context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
                 }
+                // The badge count lives in the top-right corner; repeating it here was noise.
                 if (wide && snapshot.zeroDayStreak > 0) {
                     Spacer(GlanceModifier.width(6.dp))
                     StatPill(text = context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
                 }
-                if (wide && snapshot.badgeCount > 0) {
-                    Spacer(GlanceModifier.width(6.dp))
-                    BadgeChip(context, snapshot)
-                }
             }
         }
 
-        // Only when there is genuine vertical room, otherwise the line gets clipped mid-word.
-        if (!compact && size.height >= 140.dp && snapshot.quote.isNotBlank()) {
+        // Fills the gap between the stats and the actions when the widget is tall enough to
+        // render it whole; clipping a quote mid-word looks worse than omitting it.
+        if (!compact && size.height >= 110.dp && snapshot.quote.isNotBlank()) {
             Spacer(GlanceModifier.height(9.dp))
             Text(
                 text = snapshot.quote,
@@ -192,18 +187,22 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
         }
 
         Spacer(GlanceModifier.defaultWeight())
-        // Icons rather than labels: the widget is glanceable, and these two actions are obvious.
+        val armed = snapshot.logArmedUntilEpochMs > System.currentTimeMillis()
         Row(modifier = GlanceModifier.fillMaxWidth()) {
+            // Talking is the encouraged action, so it gets the wide primary slot; logging sits
+            // narrower alongside and needs a second tap to commit.
             WidgetAction(
-                iconRes = R.drawable.ic_widget_log,
-                contentDescription = context.getString(R.string.widget_log),
+                iconRes = R.drawable.ic_widget_chat,
+                label = context.getString(R.string.widget_talk),
+                contentDescription = context.getString(R.string.widget_talk),
                 modifier = GlanceModifier.defaultWeight(),
-                onClick = actionRunCallback<WidgetLogAction>(),
+                onClick = actionStartActivity(coachIntent),
             )
             Spacer(GlanceModifier.width(8.dp))
             if (canUndo) {
                 WidgetAction(
                     iconRes = R.drawable.ic_widget_undo,
+                    label = context.getString(R.string.undo),
                     contentDescription = context.getString(R.string.undo),
                     modifier = GlanceModifier.defaultWeight(),
                     onClick = actionRunCallback<WidgetUndoAction>(),
@@ -211,11 +210,15 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
                 )
             } else {
                 WidgetAction(
-                    iconRes = R.drawable.ic_widget_chat,
-                    contentDescription = context.getString(R.string.have_craving),
+                    iconRes = if (armed) R.drawable.ic_widget_confirm else R.drawable.ic_widget_log,
+                    label = context.getString(
+                        if (armed) R.string.widget_log_confirm else R.string.widget_log_short,
+                    ),
+                    contentDescription = context.getString(R.string.widget_log),
                     modifier = GlanceModifier.defaultWeight(),
-                    onClick = actionStartActivity(coachIntent),
-                    subdued = true,
+                    onClick = actionRunCallback<WidgetLogAction>(),
+                    subdued = !armed,
+                    emphasised = armed,
                 )
             }
         }
@@ -284,10 +287,33 @@ private fun StatPill(text: String) {
 }
 
 /**
- * Time left until the next planned window, or null when nothing is being waited for.
- * Computed at render time; [WidgetBoundaryWorker] re-renders when the window arrives.
+ * A system-ticked countdown. Glance only redraws when something asks it to, so a value computed
+ * here in Kotlin would freeze between refreshes; Chronometer is driven by the framework instead and
+ * keeps counting with no app process running.
  */
-private fun countdownLabel(snapshot: WidgetSnapshot): String? {
+@Composable
+private fun LiveCountdown(targetEpochMs: Long) {
+    val context = LocalContext.current
+    val remoteViews = RemoteViews(context.packageName, R.layout.widget_countdown).apply {
+        setChronometerCountDown(R.id.widget_countdown, true)
+        setChronometer(
+            R.id.widget_countdown,
+            // Chronometer works in elapsed-realtime, so rebase the wall-clock target onto it.
+            SystemClock.elapsedRealtime() + (targetEpochMs - System.currentTimeMillis()),
+            null,
+            true,
+        )
+    }
+    AndroidRemoteViews(remoteViews)
+}
+
+/**
+ * The moment the current wait ends, or null when a ticking countdown would not earn its space.
+ *
+ * Beyond a few hours the seconds are noise and H:MM:SS crowds the header — the status line already
+ * says "until 07:30", which never goes stale anyway.
+ */
+private fun countdownTargetEpochMs(snapshot: WidgetSnapshot): Long? {
     if (snapshot.state != WidgetStateProto.WIDGET_STATE_SPACING &&
         snapshot.state != WidgetStateProto.WIDGET_STATE_MORNING_HOLD &&
         snapshot.state != WidgetStateProto.WIDGET_STATE_REST
@@ -295,13 +321,11 @@ private fun countdownLabel(snapshot: WidgetSnapshot): String? {
         return null
     }
     val remaining = snapshot.stateUntilEpochMs - System.currentTimeMillis()
-    if (remaining <= 0) return null
-    val minutes = remaining / 60_000
-    return when {
-        minutes >= 60 -> "${minutes / 60}h ${minutes % 60}m"
-        else -> "${minutes}m"
-    }
+    return snapshot.stateUntilEpochMs.takeIf { remaining in 1..MAX_COUNTDOWN_MS }
 }
+
+/** Above this, show the absolute time instead of a ticking clock. */
+private const val MAX_COUNTDOWN_MS = 4 * 60 * 60 * 1_000L
 
 private fun shortDuration(minutes: Int): String {
     val safe = minutes.coerceAtLeast(0)
@@ -337,24 +361,39 @@ private fun BadgeChip(context: Context, snapshot: WidgetSnapshot) {
 @Composable
 private fun WidgetAction(
     iconRes: Int,
+    label: String,
     contentDescription: String,
     modifier: GlanceModifier,
     onClick: androidx.glance.action.Action,
     subdued: Boolean = false,
+    emphasised: Boolean = false,
 ) {
-    Box(
+    val background = when {
+        emphasised -> ColorProvider(Color(0xFFE9B44C), Color(0xFFD79E33))
+        subdued -> ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF))
+        else -> Surface
+    }
+    val foreground = if (subdued) OnDark else Ink
+    Row(
         modifier = modifier
-            .background(if (subdued) ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)) else Surface)
+            .background(background)
             .cornerRadius(18.dp)
             .clickable(onClick)
             .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
     ) {
         Image(
             provider = ImageProvider(iconRes),
             contentDescription = contentDescription,
-            colorFilter = ColorFilter.tint(if (subdued) OnDark else Ink),
-            modifier = GlanceModifier.size(20.dp),
+            colorFilter = ColorFilter.tint(foreground),
+            modifier = GlanceModifier.size(17.dp),
+        )
+        Spacer(GlanceModifier.width(6.dp))
+        Text(
+            text = label,
+            maxLines = 1,
+            style = TextStyle(color = foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold),
         )
     }
 }
@@ -384,14 +423,23 @@ private fun Long.asLocalTime(): String = Instant.ofEpochMilli(this)
     .atZone(ZoneId.systemDefault())
     .format(DateTimeFormatter.ofPattern("HH:mm"))
 
+/**
+ * Two-step by design. A widget sits under a thumb all day, and an accidental tap writes a
+ * cigarette that never happened — which corrupts exactly the history the whole app reasons from.
+ * The first tap only arms the button.
+ */
 class WidgetLogAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
         parameters: androidx.glance.action.ActionParameters,
     ) {
-        context.repository().logCigarette(source = "WIDGET")
-        WidgetUndoExpiryWorker.schedule(context)
+        if (context.repository().armOrCommitWidgetLog()) {
+            context.repository().logCigarette(source = "WIDGET")
+            WidgetUndoExpiryWorker.schedule(context)
+        } else {
+            WidgetDisarmWorker.schedule(context)
+        }
     }
 }
 
