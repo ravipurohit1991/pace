@@ -1,0 +1,22 @@
+[
+  {
+    "id": "craving-change-scene-v1",
+    "locale": "en",
+    "category": "craving",
+    "title": "Change the scene, not just the thought",
+    "body": "Doing something different can interrupt the automatic routine around an urge.",
+    "sourceName": "Smokefree.gov — National Cancer Institute",
+    "sourceUrl": "https://smokefree.gov/challenges-when-quitting/cravings-triggers/how-manage-cravings",
+    "reviewedAt": "2026-08-02"
+  },
+  {
+    "id": "setback-next-choice-v1",
+    "locale": "en",
+    "category": "recovery",
+    "title": "Return with the next useful choice",
+    "body": "A setback does not erase earlier work. Notice what happened and choose one manageable next step.",
+    "sourceName": "Smokefree.gov — National Cancer Institute",
+    "sourceUrl": "https://smokefree.gov/challenges-when-quitting/stick-with-it/get-back-on-track",
+    "reviewedAt": "2026-08-02"
+  }
+]

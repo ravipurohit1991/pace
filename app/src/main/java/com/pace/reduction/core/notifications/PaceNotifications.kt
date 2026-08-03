@@ -1,0 +1,160 @@
+package com.pace.reduction.core.notifications
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.pace.reduction.MainActivity
+import com.pace.reduction.PaceApplication
+import com.pace.reduction.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+object PaceNotifications {
+    const val CHECKINS = "pace_checkins"
+    const val ACHIEVEMENTS = "pace_achievements"
+    const val LOCATION_CUES = "pace_location_cues"
+    const val TIMER = "pace_timer"
+    private const val COACHING_ID = 2001
+    private const val LOCATION_ID = 2002
+    private const val NUDGE_ID = 2003
+
+    fun createChannels(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannels(
+            listOf(
+                NotificationChannel(CHECKINS, context.getString(R.string.channel_checkins), NotificationManager.IMPORTANCE_DEFAULT),
+                NotificationChannel(ACHIEVEMENTS, context.getString(R.string.channel_achievements), NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(LOCATION_CUES, context.getString(R.string.channel_location), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+                },
+                NotificationChannel(TIMER, context.getString(R.string.channel_timer), NotificationManager.IMPORTANCE_DEFAULT),
+            ),
+        )
+    }
+
+    fun canPost(context: Context): Boolean =
+        (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED) && NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    @SuppressLint("MissingPermission")
+    fun postCoaching(context: Context) {
+        if (!canPost(context)) return
+        val toolkitIntent = Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_TOOLKIT)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val toolkitPending = PendingIntent.getActivity(
+            context,
+            11,
+            toolkitIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismissPending = PendingIntent.getBroadcast(
+            context,
+            12,
+            Intent(context, NotificationDismissReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHECKINS)
+            .setSmallIcon(R.drawable.ic_pace)
+            .setContentTitle(context.getString(R.string.notification_checkin_title))
+            .setContentText(context.getString(R.string.notification_checkin_body))
+            .setContentIntent(toolkitPending)
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .addAction(0, context.getString(R.string.pause_five), toolkitPending)
+            .addAction(0, context.getString(R.string.dismiss), dismissPending)
+            .build()
+        NotificationManagerCompat.from(context).notify(COACHING_ID, notification)
+    }
+
+    /**
+     * AI-written nudge that lands shortly before the next planned window and opens the coach chat
+     * so the conversation can continue where the notification left off.
+     */
+    @SuppressLint("MissingPermission")
+    fun postCoachNudge(context: Context, message: String) {
+        if (!canPost(context)) return
+        val text = message.ifBlank { context.getString(R.string.notification_nudge_fallback) }
+        val coachIntent = Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_COACH)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val coachPending = PendingIntent.getActivity(
+            context,
+            14,
+            coachIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismissPending = PendingIntent.getBroadcast(
+            context,
+            15,
+            Intent(context, NotificationDismissReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        NotificationManagerCompat.from(context).notify(
+            NUDGE_ID,
+            NotificationCompat.Builder(context, CHECKINS)
+                .setSmallIcon(R.drawable.ic_pace)
+                .setContentTitle(context.getString(R.string.notification_nudge_title))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(coachPending)
+                .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .addAction(0, context.getString(R.string.notification_nudge_action), coachPending)
+                .addAction(0, context.getString(R.string.dismiss), dismissPending)
+                .build(),
+        )
+    }
+
+    @SuppressLint("MissingPermission")
+    fun postLocationCue(context: Context) {
+        if (!canPost(context)) return
+        val intent = Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_TOOLKIT)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pending = PendingIntent.getActivity(
+            context,
+            13,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        NotificationManagerCompat.from(context).notify(
+            LOCATION_ID,
+            NotificationCompat.Builder(context, LOCATION_CUES)
+                .setSmallIcon(R.drawable.ic_pace)
+                .setContentTitle(context.getString(R.string.notification_location_title))
+                .setContentText(context.getString(R.string.notification_location_body))
+                .setContentIntent(pending)
+                .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .build(),
+        )
+    }
+}
+
+class NotificationDismissReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                (context.applicationContext as PaceApplication).container.repository.dismissCoachingNotifications()
+                context.getSystemService(NotificationManager::class.java).cancel(2001)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+}

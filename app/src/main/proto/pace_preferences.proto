@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+option java_package = "com.pace.reduction.proto";
+option java_multiple_files = true;
+
+enum CoachingToneProto {
+  COACHING_TONE_SUPPORTIVE = 0;
+  COACHING_TONE_DIRECT = 1;
+  COACHING_TONE_TOUGH = 2;
+}
+
+enum ReminderIntensityProto {
+  REMINDER_INTENSITY_OFF = 0;
+  REMINDER_INTENSITY_GENTLE = 1;
+  REMINDER_INTENSITY_STANDARD = 2;
+}
+
+enum ThemeModeProto {
+  THEME_MODE_SYSTEM = 0;
+  THEME_MODE_LIGHT = 1;
+  THEME_MODE_DARK = 2;
+}
+
+message PacePreferences {
+  int32 schema_version = 1;
+  bool onboarding_completed = 2;
+  int32 baseline_per_day = 3;
+  int32 daily_ceiling = 4;
+  int32 minimum_gap_minutes = 5;
+  int32 wake_minutes = 6;
+  int32 sleep_minutes = 7;
+  bool weekend_wake_enabled = 8;
+  int32 weekend_wake_minutes = 9;
+  int32 morning_hold_minutes = 10;
+  bool flexible_day = 11;
+  int32 reduction_step = 12;
+  int32 review_interval_days = 13;
+  double price_per_pack = 14;
+  int32 cigarettes_per_pack = 15;
+  string currency_code = 16;
+  string personal_reason = 17;
+  string reward_name = 18;
+  double reward_target = 19;
+  CoachingToneProto coaching_tone = 20;
+  ReminderIntensityProto reminder_intensity = 21;
+  bool notification_private = 22;
+  bool haptics_enabled = 23;
+  bool weather_enabled = 24;
+  bool trigger_places_enabled = 25;
+  int64 last_successful_review_epoch_ms = 26;
+  int32 pending_daily_ceiling = 27;
+  string pending_ceiling_effective_date = 28;
+  ThemeModeProto theme_mode = 29;
+  string active_pause_session_id = 30;
+  int64 active_pause_end_epoch_ms = 31;
+  int64 active_pause_remaining_ms = 32;
+  int64 active_pause_started_epoch_ms = 33;
+  int64 last_coaching_notification_epoch_ms = 34;
+  string notification_count_local_date = 35;
+  int32 notification_count_today = 36;
+  int64 notification_dismissed_until_epoch_ms = 37;
+  bytes ollama_api_key_ciphertext = 38;
+  string ollama_model = 39;
+  bool ollama_enabled = 40;
+  bool ollama_proactive_nudges = 41;
+  string quit_date = 42;
+  bool quit_mode = 43;
+}
+
+enum WidgetStateProto {
+  WIDGET_STATE_SETUP = 0;
+  WIDGET_STATE_SPACING = 1;
+  WIDGET_STATE_WINDOW_MET = 2;
+  WIDGET_STATE_MORNING_HOLD = 3;
+  WIDGET_STATE_REST = 4;
+  WIDGET_STATE_CEILING = 5;
+  WIDGET_STATE_RECOVERY = 6;
+}
+
+message WidgetSnapshot {
+  int64 generated_at_epoch_ms = 1;
+  string local_date = 2;
+  int32 count_today = 3;
+  int32 ceiling = 4;
+  int64 last_active_log_epoch_ms = 5;
+  WidgetStateProto state = 6;
+  int64 state_until_epoch_ms = 7;
+  string safe_message = 8;
+  string undo_log_id = 9;
+  int64 undo_expiry_epoch_ms = 10;
+}
