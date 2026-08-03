@@ -8,7 +8,6 @@ import androidx.glance.appwidget.updateAll
 import androidx.room.withTransaction
 import com.pace.reduction.R
 import com.pace.reduction.core.notifications.NotificationPolicy
-import com.pace.reduction.core.location.TriggerGeofenceManager
 import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.security.SecretVault
 import com.pace.reduction.data.db.CoachMessageEntity
@@ -59,6 +58,7 @@ import com.pace.reduction.proto.ThemeModeProto
 import com.pace.reduction.proto.WidgetSnapshot
 import com.pace.reduction.proto.WidgetStateProto
 import com.pace.reduction.widget.PaceWidget
+import com.pace.reduction.widget.WidgetBoundaryWorker
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -196,6 +196,57 @@ class PaceRepository(
         refreshWidgetSnapshot(undoLogId = resolvedId)
         evaluateAchievements()
         return resolvedId
+    }
+
+    /**
+     * Adds a cigarette at an arbitrary past moment so history can be corrected after the fact.
+     * Also backfills that day's plan snapshot, otherwise the day stays "unknown" and never counts
+     * toward averages, steady days or adaptive spacing.
+     */
+    suspend fun addLogAt(moment: java.time.LocalDateTime): String {
+        val zone = zoneProvider()
+        val instant = moment.atZone(zone).toInstant()
+        require(!instant.isAfter(clock.instant())) { "Cannot log a cigarette in the future" }
+        val id = UUID.randomUUID().toString()
+        val plan = settings.first()
+        database.withTransaction {
+            ensureSnapshotFor(moment.toLocalDate(), plan)
+            dao.insertLog(
+                CigaretteLogEntity(
+                    id = id,
+                    occurredAtEpochMs = instant.toEpochMilli(),
+                    recordedAtEpochMs = clock.millis(),
+                    source = "MANUAL",
+                    note = null,
+                    reversedAtEpochMs = null,
+                    reversalReason = null,
+                ),
+            )
+        }
+        refreshWidgetSnapshot()
+        evaluateAchievements()
+        return id
+    }
+
+    /** Hard-deletes a log. Used for corrections, unlike [undoLog] which keeps a reversal record. */
+    suspend fun deleteLog(id: String): Boolean {
+        val removed = dao.deleteLog(id) > 0
+        if (removed) {
+            refreshWidgetSnapshot()
+            evaluateAchievements()
+        }
+        return removed
+    }
+
+    /** Every log on [date], reversed ones included, so the editor can show the full picture. */
+    suspend fun logsOn(date: LocalDate): List<CigaretteLog> {
+        val zone = zoneProvider()
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        return dao.allLogs()
+            .filter { it.occurredAtEpochMs in start until end }
+            .map { it.toDomain() }
+            .sortedBy { it.occurredAt }
     }
 
     suspend fun undoLog(id: String): Boolean {
@@ -370,7 +421,6 @@ class PaceRepository(
             ),
         )
         preferencesStore.updateData { current -> current.toBuilder().setTriggerPlacesEnabled(true).build() }
-        TriggerGeofenceManager.sync(context, triggerPlaces.first())
         return resolvedId
     }
 
@@ -388,18 +438,15 @@ class PaceRepository(
                 createdAtEpochMs = clock.millis(),
             ),
         )
-        TriggerGeofenceManager.sync(context, triggerPlaces.first())
     }
 
     suspend fun deleteTriggerPlace(id: String): Int {
         val result = dao.deleteTriggerPlace(id)
-        TriggerGeofenceManager.sync(context, triggerPlaces.first())
         return result
     }
 
     suspend fun deleteAllTriggerPlaces() {
         dao.deleteAllTriggerPlaces()
-        TriggerGeofenceManager.removeAll(context)
     }
 
     suspend fun saveAiSettings(enabled: Boolean, apiKey: String, model: String, proactiveNudges: Boolean) {
@@ -499,6 +546,25 @@ class PaceRepository(
 
     suspend fun clearCoachMessages() = dao.deleteAllCoachMessages()
 
+    /** True when the widget's line is older than an hour and worth replacing. */
+    suspend fun widgetQuoteIsStale(): Boolean {
+        if (!aiSettings.first().isReady) return false
+        val generated = widgetStore.data.first().quoteGeneratedEpochMs
+        return clock.millis() - generated >= QUOTE_REFRESH_MS
+    }
+
+    suspend fun saveWidgetQuote(quote: String) {
+        val trimmed = quote.trim().take(180)
+        if (trimmed.isEmpty()) return
+        widgetStore.updateData { current ->
+            current.toBuilder()
+                .setQuote(trimmed)
+                .setQuoteGeneratedEpochMs(clock.millis())
+                .build()
+        }
+        PaceWidget().updateAll(context)
+    }
+
     /** Builds the grounded snapshot the coach is allowed to reason about. */
     suspend fun coachContext(): CoachContext {
         val now = clock.instant()
@@ -520,15 +586,15 @@ class PaceRepository(
         return CoachContext(
             countToday = today.count,
             ceiling = today.ceiling,
-            minutesSinceLastCigarette = lastLog?.let { java.time.Duration.between(it, now).toMinutes() },
+            minutesSinceLast = lastLog?.let { java.time.Duration.between(it, now).toMinutes() },
             minutesUntilNextWindow = (today.status as? PacingStatus.Spacing)
                 ?.let { java.time.Duration.between(now, it.earliestWindow).toMinutes().coerceAtLeast(0) },
             zeroDayStreak = quit.zeroDayStreak,
-            smokeFreeHours = quit.smokeFreeDuration.toHours(),
-            cigarettesAvoided = quit.cigarettesAvoided,
+            freeHours = quit.smokeFreeDuration.toHours(),
+            avoided = quit.cigarettesAvoided,
             moneySaved = quit.moneySaved,
             currencyCode = plan.currencyCode,
-            topTriggers = sessions.flatMap { it.triggerTags }
+            hardestSituations = sessions.flatMap { it.triggerTags }
                 .groupingBy { it }
                 .eachCount()
                 .entries
@@ -645,7 +711,6 @@ class PaceRepository(
         widgetStore.updateData { WidgetSnapshot.getDefaultInstance() }
         WorkManager.getInstance(context).cancelAllWorkByTag("pace")
         context.getSystemService(NotificationManager::class.java).cancelAll()
-        TriggerGeofenceManager.removeAll(context)
         PaceWidget().updateAll(context)
     }
 
@@ -762,7 +827,6 @@ class PaceRepository(
                 .build()
         }
         refreshWidgetSnapshot()
-        TriggerGeofenceManager.sync(context, triggerPlaces.first())
     }
 
     suspend fun isQuietHoursNow(): Boolean {
@@ -870,11 +934,28 @@ class PaceRepository(
             else -> context.getString(R.string.widget_message_default)
         }
         val badges = dao.allAchievements()
-        widgetStore.updateData {
+        val quit = QuitProgress.calculate(
+            now = now,
+            zoneId = zone,
+            logs = dao.allLogs().map { it.toDomain() },
+            baselinePerDay = plan.baselinePerDay,
+            pricePerPack = plan.pricePerPack,
+            cigarettesPerPack = plan.cigarettesPerPack,
+            quitDate = plan.quitDate,
+        )
+        widgetStore.updateData { previous ->
             WidgetSnapshot.newBuilder()
+                // The rotating line has its own hourly cadence; a state refresh must not drop it.
+                .setQuote(previous.quote)
+                .setQuoteGeneratedEpochMs(previous.quoteGeneratedEpochMs)
                 .setLatestBadgeId(badges.maxByOrNull { it.unlockedAtEpochMs }?.badgeId.orEmpty())
                 .setBadgeCount(badges.size)
                 .setMinimumGapMinutes(effectivePlan(plan).minimumGapMinutes)
+                .setSmokeFreeMinutes(quit.smokeFreeDuration.toMinutes().toInt())
+                .setCigarettesAvoided(quit.cigarettesAvoided)
+                .setMoneySaved(quit.moneySaved)
+                .setCurrencyCode(plan.currencyCode)
+                .setZeroDayStreak(quit.zeroDayStreak)
                 .setGeneratedAtEpochMs(now.toEpochMilli())
                 .setLocalDate(date.toString())
                 .setCountToday(logs.size)
@@ -888,6 +969,8 @@ class PaceRepository(
                 .build()
         }
         PaceWidget().updateAll(context)
+        // Flip the widget's countdown exactly when this window ends.
+        WidgetBoundaryWorker.scheduleAt(context, stateUntil?.toEpochMilli() ?: 0L)
     }
 
     suspend fun claimCoachingNotification(): Boolean {
@@ -1013,10 +1096,11 @@ class PaceRepository(
             rewardTarget = plan.rewardTarget,
         ).days
 
-    private suspend fun ensureTodaySnapshot(plan: PlanSettings) {
-        val now = clock.instant()
+    private suspend fun ensureTodaySnapshot(plan: PlanSettings) =
+        ensureSnapshotFor(LocalDate.now(clock.withZone(zoneProvider())), plan)
+
+    private suspend fun ensureSnapshotFor(date: LocalDate, plan: PlanSettings) {
         val zone = zoneProvider()
-        val date = LocalDate.now(clock.withZone(zone))
         dao.insertDailySnapshot(
             DailyPlanSnapshotEntity(
                 localDate = date.toString(),
@@ -1028,7 +1112,7 @@ class PaceRepository(
                 sleepMinutes = plan.sleepMinutes,
                 morningHoldMinutes = plan.morningHoldMinutes,
                 flexibleDay = plan.flexibleDay,
-                createdAtEpochMs = now.toEpochMilli(),
+                createdAtEpochMs = clock.millis(),
             ),
         )
     }
@@ -1211,7 +1295,17 @@ class PaceRepository(
             cigarettesPerPack = plan.cigarettesPerPack,
             rewardTarget = plan.rewardTarget,
         )
-        BadgeEngine.eligible(metrics, logs, snapshots, sessions, zone).forEach { candidate ->
+        val quit = QuitProgress.calculate(
+            now = now,
+            zoneId = zone,
+            logs = logs,
+            baselinePerDay = plan.baselinePerDay,
+            pricePerPack = plan.pricePerPack,
+            cigarettesPerPack = plan.cigarettesPerPack,
+            quitDate = plan.quitDate,
+        )
+        val conversations = dao.allCoachMessages().count { it.role == "user" }
+        BadgeEngine.eligible(metrics, logs, snapshots, sessions, zone, quit, conversations).forEach { candidate ->
             dao.insertAchievement(
                 AchievementEntity(
                     badgeId = candidate.id,
@@ -1250,6 +1344,8 @@ class PaceRepository(
         const val MAX_API_KEY_CHARS = 256
         const val MAX_COACH_MESSAGE_CHARS = 4_000
         const val MAX_SYSTEM_PROMPT_CHARS = 2_000
+
+        const val QUOTE_REFRESH_MS = 60 * 60 * 1_000L
 
         /** Fire a nudge when the next planned window is this close. */
         const val NUDGE_LEAD_MINUTES = 20L

@@ -103,39 +103,34 @@ object ProgressCalculator {
 data class BadgeCandidate(val id: String, val evidence: String)
 
 object BadgeEngine {
+    /**
+     * Rolls the user's totals up into the tiered catalogue. Awarding is idempotent: the DAO ignores
+     * duplicate badge ids, so re-evaluating simply re-confirms what is already earned.
+     */
     fun eligible(
         metrics: ProgressMetrics,
         logs: List<CigaretteLog>,
         snapshots: List<DailyPlanSnapshot>,
         sessions: List<UrgeSession>,
         zoneId: ZoneId,
-    ): List<BadgeCandidate> = buildList {
-        val active = logs.filter { it.reversedAt == null }.sortedBy { it.occurredAt }
-        if (sessions.any { it.completed && it.tool == "PAUSE" }) {
-            add(BadgeCandidate("first_pause", "Completed a five-minute pause"))
+        quit: QuitMetrics,
+        conversationCount: Int = 0,
+    ): List<BadgeCandidate> {
+        val cleanMinutes = quit.smokeFreeDuration.toMinutes()
+        val totals = mapOf(
+            BadgeFamily.CLEAN_HOURS to cleanMinutes / 60,
+            BadgeFamily.CLEAN_DAYS to cleanMinutes / (24 * 60),
+            BadgeFamily.CLEAR_STREAK to quit.zeroDayStreak.toLong(),
+            BadgeFamily.RESISTED to quit.cigarettesAvoided.toLong(),
+            BadgeFamily.SAVED to quit.moneySaved.toLong(),
+            BadgeFamily.STEADY_DAYS to metrics.days.count { it.steady == true }.toLong(),
+            BadgeFamily.TOOLS to sessions.count { it.completed }.toLong(),
+            BadgeFamily.CONVERSATIONS to conversationCount.toLong(),
+            BadgeFamily.LONGEST_WAIT to metrics.longestGapMinutes,
+            BadgeFamily.TIME_BACK to quit.minutesOfLifeRegained,
+        )
+        return BadgeCatalogue.earned(totals).map { definition ->
+            BadgeCandidate(definition.id, definition.threshold.toString())
         }
-        val loggedDays = active.map { it.occurredAt.atZone(zoneId).toLocalDate() }.distinct().size
-        if (loggedDays >= 7) add(BadgeCandidate("honest_week", "Logged honestly on $loggedDays distinct days"))
-        val startingGap = snapshots.minByOrNull { it.localDate }?.minimumGapMinutes
-        if (startingGap != null && metrics.longestGapMinutes >= startingGap + 30L) {
-            add(BadgeCandidate("space_maker", "Created a ${metrics.longestGapMinutes}-minute gap"))
-        }
-        if (metrics.bestMorningHoldMinutes > 0) {
-            val completedHolds = snapshots.count { snapshot ->
-                val first = active.firstOrNull { it.occurredAt.atZone(zoneId).toLocalDate() == snapshot.localDate }
-                first == null || first.occurredAt.atZone(zoneId).toLocalTime().toSecondOfDay() / 60 >=
-                    snapshot.wakeMinutes + snapshot.morningHoldMinutes
-            }
-            if (completedHolds >= 5) add(BadgeCandidate("morning_reclaimed", "Completed the morning hold on $completedHolds days"))
-        }
-        if (metrics.days.takeLast(4).count { it.steady == true } >= 3) {
-            add(BadgeCandidate("steady_three", "Finished three of the last four days at or below plan"))
-        }
-        val completedTools = sessions.count { it.completed }
-        if (completedTools >= 10) add(BadgeCandidate("tool_builder", "Completed $completedTools toolkit sessions"))
-        if (metrics.avoidedCigarettes >= 10) {
-            add(BadgeCandidate("ten_avoided", "Estimated ${metrics.avoidedCigarettes} cigarettes avoided on completed days"))
-        }
-        if (metrics.rewardProgress >= 0.25) add(BadgeCandidate("reward_step", "Reached 25% of the chosen reward target"))
     }
 }

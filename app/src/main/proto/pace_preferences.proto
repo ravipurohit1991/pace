@@ -102,4 +102,11 @@ message WidgetSnapshot {
   string latest_badge_id = 11;
   int32 badge_count = 12;
   int32 minimum_gap_minutes = 13;
+  int32 smoke_free_minutes = 14;
+  int32 cigarettes_avoided = 15;
+  double money_saved = 16;
+  string currency_code = 17;
+  int32 zero_day_streak = 18;
+  string quote = 19;
+  int64 quote_generated_epoch_ms = 20;
 }

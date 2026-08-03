@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.ColorFilter
 import androidx.glance.ImageProvider
 import androidx.glance.Image
 import androidx.glance.LocalSize
@@ -101,6 +102,8 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
             return@Column
         }
 
+        val countdown = countdownLabel(snapshot)
+
         Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
             Column(modifier = GlanceModifier.defaultWeight()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -124,11 +127,27 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
                 }
                 Text(
                     text = widgetStatus(context, snapshot),
-                    maxLines = if (compact) 1 else 2,
+                    maxLines = 1,
                     style = TextStyle(color = OnDark, fontSize = if (compact) 11.sp else 13.sp),
                 )
             }
-            if (!compact && snapshot.latestBadgeId.isNotBlank()) {
+            // The headline number people actually want: how long until the next one is due.
+            if (countdown != null) {
+                Column(horizontalAlignment = Alignment.Horizontal.End) {
+                    Text(
+                        text = countdown,
+                        style = TextStyle(
+                            color = OnDark,
+                            fontSize = if (compact) 16.sp else 22.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                    )
+                    Text(
+                        text = context.getString(R.string.widget_until_next_label),
+                        style = TextStyle(color = Muted, fontSize = 10.sp),
+                    )
+                }
+            } else if (!compact && snapshot.latestBadgeId.isNotBlank()) {
                 BadgeChip(context, snapshot)
             }
         }
@@ -137,57 +156,66 @@ private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: 
         CeilingBar(count = snapshot.countToday, ceiling = snapshot.ceiling, size = size)
 
         if (!compact) {
-            Spacer(GlanceModifier.height(8.dp))
+            Spacer(GlanceModifier.height(9.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (snapshot.minimumGapMinutes > 0) {
-                    Text(
-                        text = context.getString(R.string.widget_gap_minutes, snapshot.minimumGapMinutes),
-                        modifier = GlanceModifier
-                            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
-                            .cornerRadius(10.dp)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = TextStyle(color = OnDark, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                StatPill(text = context.getString(R.string.widget_free_for, shortDuration(snapshot.smokeFreeMinutes)))
+                Spacer(GlanceModifier.width(6.dp))
+                if (snapshot.moneySaved >= 1.0) {
+                    StatPill(
+                        text = context.getString(
+                            R.string.widget_saved,
+                            "${snapshot.moneySaved.toInt()} ${snapshot.currencyCode}",
+                        ),
                     )
-                    Spacer(GlanceModifier.width(8.dp))
+                } else {
+                    StatPill(text = context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
                 }
-                Text(
-                    text = snapshot.safeMessage,
-                    maxLines = if (wide) 1 else 2,
-                    style = TextStyle(color = Muted, fontSize = 11.sp),
-                )
+                if (wide && snapshot.zeroDayStreak > 0) {
+                    Spacer(GlanceModifier.width(6.dp))
+                    StatPill(text = context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
+                }
+                if (wide && snapshot.badgeCount > 0) {
+                    Spacer(GlanceModifier.width(6.dp))
+                    BadgeChip(context, snapshot)
+                }
             }
         }
 
+        if (!compact && snapshot.quote.isNotBlank()) {
+            Spacer(GlanceModifier.height(9.dp))
+            Text(
+                text = snapshot.quote,
+                maxLines = if (wide) 2 else 3,
+                style = TextStyle(color = Muted, fontSize = 11.sp),
+            )
+        }
+
         Spacer(GlanceModifier.defaultWeight())
+        // Icons rather than labels: the widget is glanceable, and these two actions are obvious.
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            if (compact) {
+            WidgetAction(
+                iconRes = R.drawable.ic_widget_log,
+                contentDescription = context.getString(R.string.widget_log),
+                modifier = GlanceModifier.defaultWeight(),
+                onClick = actionRunCallback<WidgetLogAction>(),
+            )
+            Spacer(GlanceModifier.width(8.dp))
+            if (canUndo) {
                 WidgetAction(
-                    text = context.getString(R.string.widget_log),
+                    iconRes = R.drawable.ic_widget_undo,
+                    contentDescription = context.getString(R.string.undo),
                     modifier = GlanceModifier.defaultWeight(),
-                    onClick = actionRunCallback<WidgetLogAction>(),
+                    onClick = actionRunCallback<WidgetUndoAction>(),
+                    subdued = true,
                 )
             } else {
                 WidgetAction(
-                    text = context.getString(R.string.widget_log),
+                    iconRes = R.drawable.ic_widget_chat,
+                    contentDescription = context.getString(R.string.have_craving),
                     modifier = GlanceModifier.defaultWeight(),
-                    onClick = actionRunCallback<WidgetLogAction>(),
+                    onClick = actionStartActivity(coachIntent),
+                    subdued = true,
                 )
-                Spacer(GlanceModifier.width(8.dp))
-                if (canUndo) {
-                    WidgetAction(
-                        text = context.getString(R.string.undo),
-                        modifier = GlanceModifier.defaultWeight(),
-                        onClick = actionRunCallback<WidgetUndoAction>(),
-                        subdued = true,
-                    )
-                } else {
-                    WidgetAction(
-                        text = context.getString(R.string.have_craving),
-                        modifier = GlanceModifier.defaultWeight(),
-                        onClick = actionStartActivity(coachIntent),
-                        subdued = true,
-                    )
-                }
             }
         }
     }
@@ -242,6 +270,48 @@ private fun CeilingBar(count: Int, ceiling: Int, size: DpSize) {
 }
 
 @Composable
+private fun StatPill(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        modifier = GlanceModifier
+            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
+            .cornerRadius(11.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        style = TextStyle(color = OnDark, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+    )
+}
+
+/**
+ * Time left until the next planned window, or null when nothing is being waited for.
+ * Computed at render time; [WidgetBoundaryWorker] re-renders when the window arrives.
+ */
+private fun countdownLabel(snapshot: WidgetSnapshot): String? {
+    if (snapshot.state != WidgetStateProto.WIDGET_STATE_SPACING &&
+        snapshot.state != WidgetStateProto.WIDGET_STATE_MORNING_HOLD &&
+        snapshot.state != WidgetStateProto.WIDGET_STATE_REST
+    ) {
+        return null
+    }
+    val remaining = snapshot.stateUntilEpochMs - System.currentTimeMillis()
+    if (remaining <= 0) return null
+    val minutes = remaining / 60_000
+    return when {
+        minutes >= 60 -> "${minutes / 60}h ${minutes % 60}m"
+        else -> "${minutes}m"
+    }
+}
+
+private fun shortDuration(minutes: Int): String {
+    val safe = minutes.coerceAtLeast(0)
+    return when {
+        safe >= 24 * 60 -> "${safe / (24 * 60)}d"
+        safe >= 60 -> "${safe / 60}h"
+        else -> "${safe}m"
+    }
+}
+
+@Composable
 private fun BadgeChip(context: Context, snapshot: WidgetSnapshot) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -265,25 +335,27 @@ private fun BadgeChip(context: Context, snapshot: WidgetSnapshot) {
 
 @Composable
 private fun WidgetAction(
-    text: String,
+    iconRes: Int,
+    contentDescription: String,
     modifier: GlanceModifier,
     onClick: androidx.glance.action.Action,
     subdued: Boolean = false,
 ) {
-    Text(
-        text = text,
-        maxLines = 1,
+    Box(
         modifier = modifier
             .background(if (subdued) ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)) else Surface)
             .cornerRadius(18.dp)
             .clickable(onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        style = TextStyle(
-            color = if (subdued) OnDark else Ink,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-        ),
-    )
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            provider = ImageProvider(iconRes),
+            contentDescription = contentDescription,
+            colorFilter = ColorFilter.tint(if (subdued) OnDark else Ink),
+            modifier = GlanceModifier.size(20.dp),
+        )
+    }
 }
 
 private val HORIZONTAL_PADDING = 14.dp

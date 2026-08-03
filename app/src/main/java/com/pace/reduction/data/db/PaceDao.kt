@@ -102,6 +102,9 @@ interface PaceDao {
     @Query("SELECT * FROM external_breaks ORDER BY startedAtEpochMs ASC")
     fun observeExternalBreaks(): Flow<List<ExternalBreakEntity>>
 
+    @Query("DELETE FROM cigarette_logs WHERE id = :id")
+    suspend fun deleteLog(id: String): Int
+
     @Query("DELETE FROM cigarette_logs")
     suspend fun deleteAllLogs()
 

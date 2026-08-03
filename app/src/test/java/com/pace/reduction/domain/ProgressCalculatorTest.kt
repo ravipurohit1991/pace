@@ -57,14 +57,28 @@ class ProgressCalculatorTest {
     }
 
     @Test
-    fun badgeCandidatesContainUniqueRuleIds() {
+    fun badgeCandidatesAreUniqueAndTieredFromTotals() {
         val sessions = (1..10).map { session("session-$it", if (it == 1) "PAUSE" else "MEMORY", 4, 2, true) }
         val metrics = ProgressCalculator.calculate(today, zone, emptyList(), emptyList(), sessions, 0.0, 20, 0.0)
-        val badges = BadgeEngine.eligible(metrics, emptyList(), emptyList(), sessions, zone)
+        val quit = QuitProgress.calculate(
+            now = today.atStartOfDay(zone).toInstant(),
+            zoneId = zone,
+            logs = emptyList(),
+            baselinePerDay = 10,
+            pricePerPack = 0.0,
+            cigarettesPerPack = 20,
+            quitDate = today.minusDays(3),
+        )
+        val badges = BadgeEngine.eligible(metrics, emptyList(), emptyList(), sessions, zone, quit, conversationCount = 3)
 
         assertEquals(badges.map { it.id }.distinct(), badges.map { it.id })
-        assertTrue(badges.any { it.id == "first_pause" })
-        assertTrue(badges.any { it.id == "tool_builder" })
+        // Ten completed sessions clears every toolkit tier up to ten.
+        assertTrue(badges.any { it.id == "tools_1" })
+        assertTrue(badges.any { it.id == "tools_10" })
+        assertFalse(badges.any { it.id == "tools_15" })
+        // Three chats clears the first three conversation tiers only.
+        assertTrue(badges.any { it.id == "conversations_3" })
+        assertFalse(badges.any { it.id == "conversations_5" })
     }
 
     private fun snapshot(date: LocalDate, baseline: Int, ceiling: Int) =

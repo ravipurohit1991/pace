@@ -70,6 +70,11 @@ data class CoachUiState(
     val error: String? = null,
     val verifiedModels: List<String> = emptyList(),
     val verifying: Boolean = false,
+    /** The coach's current "do this right now" proposal, shown in the Toolkit. */
+    val rescuePlan: String = "",
+    val rescueBusy: Boolean = false,
+    val insight: String = "",
+    val insightBusy: Boolean = false,
 )
 
 sealed interface PaceEvent {
@@ -84,6 +89,8 @@ sealed interface PaceEvent {
     data object BackupFailed : PaceEvent
     data object CoachSettingsSaved : PaceEvent
     data class ApiKeyVerified(val modelCount: Int) : PaceEvent
+    data object HistoryUpdated : PaceEvent
+    data object HistoryRejected : PaceEvent
 }
 
 private data class CoreState(
@@ -324,6 +331,40 @@ class PaceViewModel(
         }
     }
 
+    /** Asks the coach for one concrete thing to do right now, shown in the Toolkit. */
+    fun requestRescuePlan() {
+        if (_coachState.value.rescueBusy) return
+        viewModelScope.launch {
+            _coachState.update { it.copy(rescueBusy = true, error = null) }
+            runCatching { coachService.rescuePlan() }.fold(
+                onSuccess = { plan ->
+                    _coachState.update { it.copy(rescueBusy = false, rescuePlan = plan.ifBlank { it.rescuePlan }) }
+                },
+                onFailure = { error ->
+                    _coachState.update { it.copy(rescueBusy = false, error = error.userMessage()) }
+                },
+            )
+        }
+    }
+
+    fun clearRescuePlan() = _coachState.update { it.copy(rescuePlan = "") }
+
+    /** Refreshes the "what Pace notices" line on Progress. */
+    fun requestInsight() {
+        if (_coachState.value.insightBusy) return
+        viewModelScope.launch {
+            _coachState.update { it.copy(insightBusy = true, error = null) }
+            runCatching { coachService.insight() }.fold(
+                onSuccess = { text ->
+                    _coachState.update { it.copy(insightBusy = false, insight = text.ifBlank { it.insight }) }
+                },
+                onFailure = { error ->
+                    _coachState.update { it.copy(insightBusy = false, error = error.userMessage()) }
+                },
+            )
+        }
+    }
+
     fun stopCoach() {
         coachJob?.cancel()
         coachJob = null
@@ -364,6 +405,46 @@ class PaceViewModel(
         viewModelScope.launch {
             repository.saveAiSettings(enabled, apiKey, model, proactiveNudges)
             _events.emit(PaceEvent.CoachSettingsSaved)
+        }
+    }
+
+    /** Logs for the day being edited in the history screen. */
+    private val _editorDate = MutableStateFlow(LocalDate.now())
+    val editorDate: StateFlow<LocalDate> = _editorDate.asStateFlow()
+
+    private val _editorLogs = MutableStateFlow<List<CigaretteLog>>(emptyList())
+    val editorLogs: StateFlow<List<CigaretteLog>> = _editorLogs.asStateFlow()
+
+    fun selectEditorDate(date: LocalDate) {
+        if (date.isAfter(LocalDate.now())) return
+        _editorDate.value = date
+        refreshEditorLogs()
+    }
+
+    fun refreshEditorLogs() {
+        viewModelScope.launch {
+            _editorLogs.value = repository.logsOn(_editorDate.value)
+        }
+    }
+
+    fun addHistoryEntry(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            val moment = _editorDate.value.atTime(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
+            val result = runCatching { repository.addLogAt(moment) }
+            if (result.isSuccess) {
+                _editorLogs.value = repository.logsOn(_editorDate.value)
+                _events.emit(PaceEvent.HistoryUpdated)
+            } else {
+                _events.emit(PaceEvent.HistoryRejected)
+            }
+        }
+    }
+
+    fun deleteHistoryEntry(id: String) {
+        viewModelScope.launch {
+            repository.deleteLog(id)
+            _editorLogs.value = repository.logsOn(_editorDate.value)
+            _events.emit(PaceEvent.HistoryUpdated)
         }
     }
 

@@ -64,6 +64,15 @@ class CoachCheckupWorker(context: Context, parameters: WorkerParameters) : Corou
     }.fold({ Result.success() }, { Result.retry() })
 }
 
+/** Keeps a fresh line on the home screen, replaced about once an hour. */
+class WidgetQuoteWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result = runCatching {
+        if (!applicationContext.repository().widgetQuoteIsStale()) return@runCatching
+        val quote = runCatching { applicationContext.coachService().quote() }.getOrDefault("")
+        applicationContext.repository().saveWidgetQuote(quote)
+    }.fold({ Result.success() }, { Result.retry() })
+}
+
 class WidgetRefreshWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = runCatching {
         applicationContext.repository().refreshWidgetSnapshot()
@@ -100,6 +109,18 @@ object PaceWorkScheduler {
             "pace-widget-refresh",
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<WidgetRefreshWorker>(6, TimeUnit.HOURS).addTag(TAG).build(),
+        )
+        workManager.enqueueUniquePeriodicWork(
+            "pace-widget-quote",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<WidgetQuoteWorker>(1, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .addTag(TAG)
+                .build(),
         )
         workManager.enqueueUniquePeriodicWork(
             "pace-coach-checkup",
