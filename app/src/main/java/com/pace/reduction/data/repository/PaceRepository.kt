@@ -29,16 +29,21 @@ import com.pace.reduction.data.backup.PaceBackupValidator
 import com.pace.reduction.data.backup.PlanBackup
 import com.pace.reduction.data.backup.SnapshotBackup
 import com.pace.reduction.data.backup.UrgeBackup
+import com.pace.reduction.domain.model.AccentPalette
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
 import com.pace.reduction.domain.model.CigaretteLog
 import com.pace.reduction.domain.model.CoachingTone
 import com.pace.reduction.domain.model.DailyPlanSnapshot
+import com.pace.reduction.domain.model.MotionLevel
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.ReminderIntensity
 import com.pace.reduction.domain.model.PacingStatus
 import com.pace.reduction.domain.model.ThemeMode
 import com.pace.reduction.domain.model.UrgeSession
+import com.pace.reduction.domain.model.WidgetBackground
+import com.pace.reduction.domain.model.WidgetSettings
+import com.pace.reduction.domain.model.WidgetTick
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.AdaptiveSpacing
 import com.pace.reduction.domain.BadgeEngine
@@ -48,14 +53,21 @@ import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.QuitProgress
 import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.WidgetTapGuard
+import com.pace.reduction.proto.AccentPaletteProto
 import com.pace.reduction.proto.CoachingToneProto
+import com.pace.reduction.proto.MotionLevelProto
 import com.pace.reduction.proto.PacePreferences
 import com.pace.reduction.proto.ReminderIntensityProto
 import com.pace.reduction.proto.ThemeModeProto
+import com.pace.reduction.proto.WidgetBackgroundProto
 import com.pace.reduction.proto.WidgetSnapshot
 import com.pace.reduction.proto.WidgetStateProto
+import com.pace.reduction.proto.WidgetTickProto
+import com.pace.reduction.widget.COUNTDOWN_STATES
 import com.pace.reduction.widget.PaceWidget
+import com.pace.reduction.widget.WIDGET_COUNTDOWN_MAX_MS
 import com.pace.reduction.widget.WidgetBoundaryWorker
+import com.pace.reduction.widget.WidgetTickWorker
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -82,6 +94,8 @@ class PaceRepository(
     }
 
     val settings: Flow<PlanSettings> = preferencesStore.data.map(::toDomain)
+
+    val widgetSettings: Flow<WidgetSettings> = preferencesStore.data.map(::toWidgetSettings)
 
     val activeLogs: Flow<List<CigaretteLog>> = dao.observeActiveLogs().map { entities ->
         entities.map { it.toDomain() }
@@ -136,6 +150,15 @@ class PaceRepository(
             .clearPendingCeilingEffectiveDate()
             .build() }
         ensureTodaySnapshot(plan)
+        refreshWidgetSnapshot()
+    }
+
+    /**
+     * Widget preferences apply the moment they are changed — a Save button between a colour swatch
+     * and the home screen would make the preview a lie.
+     */
+    suspend fun updateWidgetSettings(widget: WidgetSettings) {
+        preferencesStore.updateData { current -> current.withWidget(widget) }
         refreshWidgetSnapshot()
     }
 
@@ -522,6 +545,9 @@ class PaceRepository(
      * Returns true when this tap committed a log.
      */
     suspend fun armOrCommitWidgetLog(): Boolean {
+        // Opt-out, not opt-in: a user who has decided their widget never gets pocket-tapped
+        // should not have to tap twice forever to prove it.
+        if (!widgetSettings.first().confirmLog) return true
         val now = clock.millis()
         var commit = false
         widgetStore.updateData { current ->
@@ -912,6 +938,16 @@ class PaceRepository(
             PacingStatus.CeilingReached -> WidgetStateProto.WIDGET_STATE_CEILING to null
             PacingStatus.Recovery -> WidgetStateProto.WIDGET_STATE_RECOVERY to null
         }
+        // The widget only recalculates while it is actually showing a countdown. Anything longer
+        // than the widget will display — an overnight rest window, above all — is left to the
+        // boundary worker alone, rather than waking the app every few minutes until morning.
+        val countdownDeadline = stateUntil
+            ?.toEpochMilli()
+            ?.takeIf {
+                widgetState in COUNTDOWN_STATES &&
+                    it - now.toEpochMilli() in 1..WIDGET_COUNTDOWN_MAX_MS
+            }
+            ?: 0L
         val safeMessage = when (summary.status) {
             is PacingStatus.Rest -> context.getString(R.string.widget_message_rest)
             PacingStatus.Recovery -> context.getString(R.string.widget_message_recovery)
@@ -956,6 +992,13 @@ class PaceRepository(
         PaceWidget().updateAll(context)
         // Flip the widget's countdown exactly when this window ends.
         WidgetBoundaryWorker.scheduleAt(context, stateUntil?.toEpochMilli() ?: 0L)
+        // Between now and that boundary, keep the remaining time and the stats current.
+        WidgetTickWorker.reschedule(
+            context = context,
+            intervalMs = widgetSettings.first().tickIntervalMs,
+            boundaryEpochMs = countdownDeadline,
+            nowEpochMs = now.toEpochMilli(),
+        )
     }
 
     suspend fun claimCoachingNotification(): Boolean {
@@ -1135,7 +1178,48 @@ class PaceRepository(
         .setHighUrgeWindowEnabled(plan.highUrgeWindowEnabled)
         .setHighUrgeStartMinutes(plan.highUrgeStartMinutes.coerceIn(0, 1439))
         .setHighUrgeEndMinutes(plan.highUrgeEndMinutes.coerceIn(0, 1439))
+        .setAccentPalette(plan.accentPalette.toProto())
+        .setDynamicColor(plan.dynamicColor)
+        .setAmoledDark(plan.amoledDark)
+        .setMotionLevel(plan.motionLevel.toProto())
         .build()
+
+    private fun PacePreferences.withWidget(widget: WidgetSettings): PacePreferences = toBuilder()
+        .setWidgetBackground(widget.background.toProto())
+        .setWidgetCornerRadiusDp(widget.cornerRadiusDp.coerceIn(0, 40))
+        .setWidgetOpacityPercent(widget.opacityPercent.coerceIn(35, 100))
+        // Stored inverted so an untouched install reads as "everything on".
+        .setWidgetHideQuote(!widget.showQuote)
+        .setWidgetHideStats(!widget.showStats)
+        .setWidgetHideActions(!widget.showActions)
+        .setWidgetHideCountdown(!widget.showCountdown)
+        .setWidgetHideStreak(!widget.showStreak)
+        .setWidgetSkipLogConfirm(!widget.confirmLog)
+        .setWidgetDisablePulse(!widget.livePulse)
+        .setWidgetTick(widget.tick.toProto())
+        .build()
+
+    private fun toWidgetSettings(proto: PacePreferences): WidgetSettings = WidgetSettings(
+        background = when (proto.widgetBackground) {
+            WidgetBackgroundProto.WIDGET_BACKGROUND_SOLID -> WidgetBackground.SOLID
+            WidgetBackgroundProto.WIDGET_BACKGROUND_GLASS -> WidgetBackground.GLASS
+            else -> WidgetBackground.GRADIENT
+        },
+        cornerRadiusDp = proto.widgetCornerRadiusDp.takeIf { it in 1..40 } ?: 24,
+        opacityPercent = proto.widgetOpacityPercent.takeIf { it in 35..100 } ?: 100,
+        showQuote = !proto.widgetHideQuote,
+        showStats = !proto.widgetHideStats,
+        showActions = !proto.widgetHideActions,
+        showCountdown = !proto.widgetHideCountdown,
+        showStreak = !proto.widgetHideStreak,
+        confirmLog = !proto.widgetSkipLogConfirm,
+        livePulse = !proto.widgetDisablePulse,
+        tick = when (proto.widgetTick) {
+            WidgetTickProto.WIDGET_TICK_LIVE -> WidgetTick.LIVE
+            WidgetTickProto.WIDGET_TICK_OFF -> WidgetTick.OFF
+            else -> WidgetTick.SAVER
+        },
+    )
 
     private fun toDomain(proto: PacePreferences): PlanSettings = PlanSettings(
         onboardingCompleted = proto.onboardingCompleted,
@@ -1183,6 +1267,20 @@ class PaceRepository(
         highUrgeWindowEnabled = proto.highUrgeWindowEnabled,
         highUrgeStartMinutes = proto.highUrgeStartMinutes.takeIf { it > 0 } ?: (15 * 60),
         highUrgeEndMinutes = proto.highUrgeEndMinutes.takeIf { it > 0 } ?: (18 * 60),
+        accentPalette = when (proto.accentPalette) {
+            AccentPaletteProto.ACCENT_PALETTE_OCEAN -> AccentPalette.OCEAN
+            AccentPaletteProto.ACCENT_PALETTE_EMBER -> AccentPalette.EMBER
+            AccentPaletteProto.ACCENT_PALETTE_VIOLET -> AccentPalette.VIOLET
+            AccentPaletteProto.ACCENT_PALETTE_SLATE -> AccentPalette.SLATE
+            else -> AccentPalette.SAGE
+        },
+        dynamicColor = proto.dynamicColor,
+        amoledDark = proto.amoledDark,
+        motionLevel = when (proto.motionLevel) {
+            MotionLevelProto.MOTION_LEVEL_SUBTLE -> MotionLevel.SUBTLE
+            MotionLevelProto.MOTION_LEVEL_NONE -> MotionLevel.NONE
+            else -> MotionLevel.FULL
+        },
     )
 
     private fun PacePreferences.effectiveDailyCeiling(): Int {
@@ -1212,6 +1310,32 @@ class PaceRepository(
         ThemeMode.SYSTEM -> ThemeModeProto.THEME_MODE_SYSTEM
         ThemeMode.LIGHT -> ThemeModeProto.THEME_MODE_LIGHT
         ThemeMode.DARK -> ThemeModeProto.THEME_MODE_DARK
+    }
+
+    private fun AccentPalette.toProto(): AccentPaletteProto = when (this) {
+        AccentPalette.SAGE -> AccentPaletteProto.ACCENT_PALETTE_SAGE
+        AccentPalette.OCEAN -> AccentPaletteProto.ACCENT_PALETTE_OCEAN
+        AccentPalette.EMBER -> AccentPaletteProto.ACCENT_PALETTE_EMBER
+        AccentPalette.VIOLET -> AccentPaletteProto.ACCENT_PALETTE_VIOLET
+        AccentPalette.SLATE -> AccentPaletteProto.ACCENT_PALETTE_SLATE
+    }
+
+    private fun MotionLevel.toProto(): MotionLevelProto = when (this) {
+        MotionLevel.FULL -> MotionLevelProto.MOTION_LEVEL_FULL
+        MotionLevel.SUBTLE -> MotionLevelProto.MOTION_LEVEL_SUBTLE
+        MotionLevel.NONE -> MotionLevelProto.MOTION_LEVEL_NONE
+    }
+
+    private fun WidgetBackground.toProto(): WidgetBackgroundProto = when (this) {
+        WidgetBackground.GRADIENT -> WidgetBackgroundProto.WIDGET_BACKGROUND_GRADIENT
+        WidgetBackground.SOLID -> WidgetBackgroundProto.WIDGET_BACKGROUND_SOLID
+        WidgetBackground.GLASS -> WidgetBackgroundProto.WIDGET_BACKGROUND_GLASS
+    }
+
+    private fun WidgetTick.toProto(): WidgetTickProto = when (this) {
+        WidgetTick.SAVER -> WidgetTickProto.WIDGET_TICK_SAVER
+        WidgetTick.LIVE -> WidgetTickProto.WIDGET_TICK_LIVE
+        WidgetTick.OFF -> WidgetTickProto.WIDGET_TICK_OFF
     }
 
     private fun CigaretteLogEntity.toDomain(): CigaretteLog = CigaretteLog(

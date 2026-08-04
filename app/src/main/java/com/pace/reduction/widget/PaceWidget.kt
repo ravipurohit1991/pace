@@ -2,7 +2,6 @@ package com.pace.reduction.widget
 
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -34,6 +33,7 @@ import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -48,19 +48,37 @@ import androidx.glance.text.TextStyle
 import com.pace.reduction.MainActivity
 import com.pace.reduction.PaceApplication
 import com.pace.reduction.R
+import com.pace.reduction.core.designsystem.widgetBackdrop
+import com.pace.reduction.data.datastore.pacePreferencesDataStore
 import com.pace.reduction.data.datastore.widgetSnapshotDataStore
+import com.pace.reduction.domain.model.AccentPalette
+import com.pace.reduction.domain.model.WidgetBackground
+import com.pace.reduction.domain.model.WidgetSettings
+import com.pace.reduction.domain.model.WidgetTick
+import com.pace.reduction.proto.AccentPaletteProto
+import com.pace.reduction.proto.PacePreferences
+import com.pace.reduction.proto.WidgetBackgroundProto
 import com.pace.reduction.proto.WidgetSnapshot
 import com.pace.reduction.proto.WidgetStateProto
+import com.pace.reduction.proto.WidgetTickProto
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 
-private val Ink = ColorProvider(Color(0xFF23402D), Color(0xFF0F1F16))
+private val Ink = ColorProvider(Color(0xFF1B2E22), Color(0xFF0F1F16))
 private val Surface = ColorProvider(Color(0xFFFFFDF7), Color(0xFFE7E2D8))
 private val OnDark = ColorProvider(Color.White, Color(0xFFF2F6F3))
-private val Muted = ColorProvider(Color(0xFFC5DBCB), Color(0xFF9FBCA8))
+private val Muted = ColorProvider(Color(0xFFD3E3D8), Color(0xFFA9C2B1))
 private val TrackDim = ColorProvider(Color(0x33FFFFFF), Color(0x28FFFFFF))
+private val Pill = ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF))
+private val OverCeiling = ColorProvider(Color(0xFFF0BFA6), Color(0xFFD79E7F))
+
+/** Everything the widget needs that is not in the snapshot: how it should look, and in what accent. */
+private data class WidgetStyle(
+    val accent: AccentPalette,
+    val settings: WidgetSettings,
+)
 
 class PaceWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Responsive(
@@ -73,9 +91,15 @@ class PaceWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val initialSnapshot = context.widgetSnapshotDataStore.data.first()
+        val initialPreferences = context.pacePreferencesDataStore.data.first()
         provideContent {
             val snapshot by context.widgetSnapshotDataStore.data.collectAsState(initialSnapshot)
-            GlanceTheme { PaceWidgetContent(context, snapshot, LocalSize.current) }
+            // Appearance lives in the same store the app writes its settings to, so a change in
+            // Settings reaches the home screen without a second copy to keep in step.
+            val preferences by context.pacePreferencesDataStore.data.collectAsState(initialPreferences)
+            GlanceTheme {
+                PaceWidgetContent(context, snapshot, preferences.toStyle(), LocalSize.current)
+            }
         }
     }
 }
@@ -85,143 +109,222 @@ class PaceWidgetReceiver : GlanceAppWidgetReceiver() {
 }
 
 @Composable
-private fun PaceWidgetContent(context: Context, snapshot: WidgetSnapshot, size: DpSize) {
+private fun PaceWidgetContent(
+    context: Context,
+    snapshot: WidgetSnapshot,
+    style: WidgetStyle,
+    size: DpSize,
+) {
     val configured = snapshot.localDate.isNotBlank()
     val compact = size.width < 170.dp || size.height < 95.dp
     val wide = size.width >= 280.dp
+    val settings = style.settings
     val canUndo = snapshot.undoLogId.isNotBlank() && snapshot.undoExpiryEpochMs > System.currentTimeMillis()
     val coachIntent = Intent(context, MainActivity::class.java)
         .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_COACH)
 
-    Column(
-        modifier = GlanceModifier
-            .fillMaxSize()
-            .background(ColorProvider(Color(0xFF3F6A4E), Color(0xFF1E3A29)))
-            .cornerRadius(24.dp)
-            .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
-            .padding(horizontal = HORIZONTAL_PADDING, vertical = 12.dp),
-    ) {
-        if (!configured) {
-            SetupState(context)
-            return@Column
-        }
+    Backdrop(style, size) {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxSize()
+                .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
+                .padding(horizontal = HORIZONTAL_PADDING, vertical = 12.dp),
+        ) {
+            if (!configured) {
+                SetupState(context)
+                return@Column
+            }
 
-        val countdownTarget = countdownTargetEpochMs(snapshot)
+            // With ticking off there is nothing to keep the figure honest, so it is left out
+            // rather than frozen at whatever it read hours ago.
+            val showCountdown = settings.showCountdown && settings.tick != WidgetTick.OFF
+            val countdownTarget = countdownTargetEpochMs(snapshot).takeIf { showCountdown }
 
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
-            Column(modifier = GlanceModifier.defaultWeight()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
+                Column(modifier = GlanceModifier.defaultWeight()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = snapshot.countToday.toString(),
+                            style = TextStyle(
+                                color = OnDark,
+                                fontSize = if (compact) 26.sp else 34.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                        Spacer(GlanceModifier.width(4.dp))
+                        Text(
+                            text = "/ ${snapshot.ceiling}",
+                            style = TextStyle(
+                                color = Muted,
+                                fontSize = if (compact) 13.sp else 16.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                    Text(
+                        text = widgetStatus(context, snapshot),
+                        maxLines = 1,
+                        style = TextStyle(color = OnDark, fontSize = if (compact) 11.sp else 13.sp),
+                    )
+                }
+                // The figure people actually want. Recalculated on the refresh cadence rather than
+                // ticked: it is stated in whole minutes, so a second-by-second clock would spend
+                // fifty-nine redraws out of sixty rewriting the same text.
+                if (countdownTarget != null) {
+                    Column(horizontalAlignment = Alignment.Horizontal.End) {
+                        Text(
+                            text = remainingText(context, countdownTarget),
+                            maxLines = 1,
+                            style = TextStyle(
+                                color = OnDark,
+                                fontSize = if (compact) 15.sp else 20.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                        Text(
+                            text = context.getString(R.string.widget_until_next_label),
+                            style = TextStyle(color = Muted, fontSize = 10.sp),
+                        )
+                    }
+                } else if (snapshot.badgeCount > 0) {
+                    BadgeChip(context, snapshot)
+                }
+            }
+
+            Spacer(GlanceModifier.height(if (compact) 6.dp else 9.dp))
+            CeilingBar(count = snapshot.countToday, ceiling = snapshot.ceiling, size = size)
+
+            // The single genuinely animated element: a system-driven sweep that keeps moving with
+            // no process running, so a widget mid-wait never looks frozen. Tied to the wait itself
+            // rather than to the countdown, because it costs nothing to refresh and stays true
+            // even when the user has turned recalculation off.
+            val waiting = snapshot.state in COUNTDOWN_STATES &&
+                snapshot.stateUntilEpochMs > System.currentTimeMillis()
+            if (settings.livePulse && waiting) {
+                Spacer(GlanceModifier.height(3.dp))
+                LivePulse()
+            }
+
+            if (!compact && settings.showStats) {
+                Spacer(GlanceModifier.height(9.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = snapshot.countToday.toString(),
-                        style = TextStyle(
-                            color = OnDark,
-                            fontSize = if (compact) 26.sp else 34.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                    Spacer(GlanceModifier.width(4.dp))
-                    Text(
-                        text = "/ ${snapshot.ceiling}",
-                        style = TextStyle(
-                            color = Muted,
-                            fontSize = if (compact) 13.sp else 16.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                    )
-                }
-                Text(
-                    text = widgetStatus(context, snapshot),
-                    maxLines = 1,
-                    style = TextStyle(color = OnDark, fontSize = if (compact) 11.sp else 13.sp),
-                )
-            }
-            // The figure people actually want, ticking on its own via a system Chronometer.
-            if (countdownTarget != null) {
-                Column(horizontalAlignment = Alignment.Horizontal.End) {
-                    LiveCountdown(targetEpochMs = countdownTarget)
-                    Text(
-                        text = context.getString(R.string.widget_until_next_label),
-                        style = TextStyle(color = Muted, fontSize = 10.sp),
-                    )
-                }
-            } else if (snapshot.badgeCount > 0) {
-                BadgeChip(context, snapshot)
-            }
-        }
-
-        Spacer(GlanceModifier.height(if (compact) 6.dp else 9.dp))
-        CeilingBar(count = snapshot.countToday, ceiling = snapshot.ceiling, size = size)
-
-        if (!compact) {
-            Spacer(GlanceModifier.height(9.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatPill(text = context.getString(R.string.widget_free_for, shortDuration(snapshot.smokeFreeMinutes)))
-                Spacer(GlanceModifier.width(6.dp))
-                if (snapshot.moneySaved >= 1.0) {
                     StatPill(
                         text = context.getString(
-                            R.string.widget_saved,
-                            "${snapshot.moneySaved.toInt()} ${snapshot.currencyCode}",
+                            R.string.widget_free_for,
+                            shortDuration(snapshot.smokeFreeMinutes),
                         ),
                     )
-                } else {
-                    StatPill(text = context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
-                }
-                // The badge count lives in the top-right corner; repeating it here was noise.
-                if (wide && snapshot.zeroDayStreak > 0) {
                     Spacer(GlanceModifier.width(6.dp))
-                    StatPill(text = context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
+                    if (snapshot.moneySaved >= 1.0) {
+                        StatPill(
+                            text = context.getString(
+                                R.string.widget_saved,
+                                "${snapshot.moneySaved.toInt()} ${snapshot.currencyCode}",
+                            ),
+                        )
+                    } else {
+                        StatPill(text = context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
+                    }
+                    // The badge count lives in the top-right corner; repeating it here was noise.
+                    if (wide && settings.showStreak && snapshot.zeroDayStreak > 0) {
+                        Spacer(GlanceModifier.width(6.dp))
+                        StatPill(text = context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
+                    }
+                }
+            }
+
+            // Fills the gap between the stats and the actions when the widget is tall enough to
+            // render it whole; clipping a quote mid-word looks worse than omitting it.
+            if (!compact && settings.showQuote && size.height >= 110.dp && snapshot.quote.isNotBlank()) {
+                Spacer(GlanceModifier.height(9.dp))
+                Text(
+                    text = snapshot.quote,
+                    maxLines = 3,
+                    style = TextStyle(color = Muted, fontSize = 11.sp),
+                )
+            }
+
+            if (settings.showActions) {
+                Spacer(GlanceModifier.defaultWeight())
+                val armed = snapshot.logArmedUntilEpochMs > System.currentTimeMillis()
+                Row(modifier = GlanceModifier.fillMaxWidth()) {
+                    // Talking is the encouraged action, so it gets the wide primary slot; logging sits
+                    // narrower alongside and needs a second tap to commit.
+                    WidgetAction(
+                        iconRes = R.drawable.ic_widget_chat,
+                        label = context.getString(R.string.widget_talk),
+                        contentDescription = context.getString(R.string.widget_talk),
+                        modifier = GlanceModifier.defaultWeight(),
+                        onClick = actionStartActivity(coachIntent),
+                    )
+                    Spacer(GlanceModifier.width(8.dp))
+                    if (canUndo) {
+                        WidgetAction(
+                            iconRes = R.drawable.ic_widget_undo,
+                            label = context.getString(R.string.undo),
+                            contentDescription = context.getString(R.string.undo),
+                            modifier = GlanceModifier.defaultWeight(),
+                            onClick = actionRunCallback<WidgetUndoAction>(),
+                            subdued = true,
+                        )
+                    } else {
+                        WidgetAction(
+                            iconRes = if (armed) R.drawable.ic_widget_confirm else R.drawable.ic_widget_log,
+                            label = context.getString(
+                                if (armed) R.string.widget_log_confirm else R.string.widget_log_short,
+                            ),
+                            contentDescription = context.getString(R.string.widget_log),
+                            modifier = GlanceModifier.defaultWeight(),
+                            onClick = actionRunCallback<WidgetLogAction>(),
+                            subdued = !armed,
+                            emphasised = armed,
+                        )
+                    }
                 }
             }
         }
+    }
+}
 
-        // Fills the gap between the stats and the actions when the widget is tall enough to
-        // render it whole; clipping a quote mid-word looks worse than omitting it.
-        if (!compact && size.height >= 110.dp && snapshot.quote.isNotBlank()) {
-            Spacer(GlanceModifier.height(9.dp))
-            Text(
-                text = snapshot.quote,
-                maxLines = 3,
-                style = TextStyle(color = Muted, fontSize = 11.sp),
+/**
+ * The widget's card: an accent fill, an optional sheen, and an optional highlight behind the count.
+ *
+ * The gradient is an overlay drawable rather than a per-accent resource, so the five palettes and
+ * the three background styles are fifteen combinations built from two files.
+ */
+@Composable
+private fun Backdrop(style: WidgetStyle, size: DpSize, content: @Composable () -> Unit) {
+    val settings = style.settings
+    val fill = style.accent.widgetBackdrop(
+        opacityPercent = settings.opacityPercent,
+        glass = settings.background == WidgetBackground.GLASS,
+    )
+    val radius = settings.cornerRadiusDp.dp
+    Box(
+        modifier = GlanceModifier
+            .fillMaxSize()
+            .background(ColorProvider(fill.day, fill.night))
+            .cornerRadius(radius),
+    ) {
+        if (settings.background != WidgetBackground.SOLID) {
+            Image(
+                provider = ImageProvider(R.drawable.widget_scrim),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxSize().cornerRadius(radius),
             )
         }
-
-        Spacer(GlanceModifier.defaultWeight())
-        val armed = snapshot.logArmedUntilEpochMs > System.currentTimeMillis()
-        Row(modifier = GlanceModifier.fillMaxWidth()) {
-            // Talking is the encouraged action, so it gets the wide primary slot; logging sits
-            // narrower alongside and needs a second tap to commit.
-            WidgetAction(
-                iconRes = R.drawable.ic_widget_chat,
-                label = context.getString(R.string.widget_talk),
-                contentDescription = context.getString(R.string.widget_talk),
-                modifier = GlanceModifier.defaultWeight(),
-                onClick = actionStartActivity(coachIntent),
+        // The highlight behind the count needs room to fall off; on a two-cell widget it would
+        // just wash the whole card out.
+        if (settings.background == WidgetBackground.GRADIENT && size.width >= 170.dp) {
+            Image(
+                provider = ImageProvider(R.drawable.widget_glow),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = GlanceModifier.fillMaxSize().cornerRadius(radius),
             )
-            Spacer(GlanceModifier.width(8.dp))
-            if (canUndo) {
-                WidgetAction(
-                    iconRes = R.drawable.ic_widget_undo,
-                    label = context.getString(R.string.undo),
-                    contentDescription = context.getString(R.string.undo),
-                    modifier = GlanceModifier.defaultWeight(),
-                    onClick = actionRunCallback<WidgetUndoAction>(),
-                    subdued = true,
-                )
-            } else {
-                WidgetAction(
-                    iconRes = if (armed) R.drawable.ic_widget_confirm else R.drawable.ic_widget_log,
-                    label = context.getString(
-                        if (armed) R.string.widget_log_confirm else R.string.widget_log_short,
-                    ),
-                    contentDescription = context.getString(R.string.widget_log),
-                    modifier = GlanceModifier.defaultWeight(),
-                    onClick = actionRunCallback<WidgetLogAction>(),
-                    subdued = !armed,
-                    emphasised = armed,
-                )
-            }
         }
+        content()
     }
 }
 
@@ -265,9 +368,7 @@ private fun CeilingBar(count: Int, ceiling: Int, size: DpSize) {
                     .width(litWidth)
                     .height(6.dp)
                     .cornerRadius(3.dp)
-                    .background(
-                        if (over) ColorProvider(Color(0xFFE5A3A3), Color(0xFFC98686)) else Surface,
-                    ),
+                    .background(if (over) OverCeiling else Surface),
             ) {}
         }
     }
@@ -279,7 +380,7 @@ private fun StatPill(text: String) {
         text = text,
         maxLines = 1,
         modifier = GlanceModifier
-            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
+            .background(Pill)
             .cornerRadius(11.dp)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         style = TextStyle(color = OnDark, fontSize = 11.sp, fontWeight = FontWeight.Medium),
@@ -287,45 +388,57 @@ private fun StatPill(text: String) {
 }
 
 /**
- * A system-ticked countdown. Glance only redraws when something asks it to, so a value computed
- * here in Kotlin would freeze between refreshes; Chronometer is driven by the framework instead and
- * keeps counting with no app process running.
+ * The indeterminate sweep. See `widget_pulse.xml` for why this is the only thing that truly moves.
+ *
+ * The size has to be stated on the Glance side. Glance wraps embedded RemoteViews in a container
+ * sized from its modifiers, and a `match_parent` child of an unsized container claims the column's
+ * whole remaining height — which silently swallows everything below it.
  */
 @Composable
-private fun LiveCountdown(targetEpochMs: Long) {
+private fun LivePulse() {
     val context = LocalContext.current
-    val remoteViews = RemoteViews(context.packageName, R.layout.widget_countdown).apply {
-        setChronometerCountDown(R.id.widget_countdown, true)
-        setChronometer(
-            R.id.widget_countdown,
-            // Chronometer works in elapsed-realtime, so rebase the wall-clock target onto it.
-            SystemClock.elapsedRealtime() + (targetEpochMs - System.currentTimeMillis()),
-            null,
-            true,
-        )
-    }
-    AndroidRemoteViews(remoteViews)
+    AndroidRemoteViews(
+        remoteViews = RemoteViews(context.packageName, R.layout.widget_pulse),
+        modifier = GlanceModifier.fillMaxWidth().height(3.dp),
+    )
 }
 
 /**
- * The moment the current wait ends, or null when a ticking countdown would not earn its space.
+ * The moment the current wait ends, or null when a countdown would not earn its space.
  *
- * Beyond a few hours the seconds are noise and H:MM:SS crowds the header — the status line already
- * says "until 07:30", which never goes stale anyway.
+ * Past the cap the widget stops counting and leans on the status line's "until 07:30", which is
+ * exact and never goes stale. That also keeps the refresh chain off an eight-hour rest window,
+ * where a widget nobody is looking at would otherwise wake the app all night.
  */
 private fun countdownTargetEpochMs(snapshot: WidgetSnapshot): Long? {
-    if (snapshot.state != WidgetStateProto.WIDGET_STATE_SPACING &&
-        snapshot.state != WidgetStateProto.WIDGET_STATE_MORNING_HOLD &&
-        snapshot.state != WidgetStateProto.WIDGET_STATE_REST
-    ) {
-        return null
-    }
+    if (snapshot.state !in COUNTDOWN_STATES) return null
     val remaining = snapshot.stateUntilEpochMs - System.currentTimeMillis()
-    return snapshot.stateUntilEpochMs.takeIf { remaining in 1..MAX_COUNTDOWN_MS }
+    return snapshot.stateUntilEpochMs.takeIf { remaining in 1..WIDGET_COUNTDOWN_MAX_MS }
 }
 
-/** Above this, show the absolute time instead of a ticking clock. */
-private const val MAX_COUNTDOWN_MS = 4 * 60 * 60 * 1_000L
+internal val COUNTDOWN_STATES = setOf(
+    WidgetStateProto.WIDGET_STATE_SPACING,
+    WidgetStateProto.WIDGET_STATE_MORNING_HOLD,
+    WidgetStateProto.WIDGET_STATE_REST,
+)
+
+/** Above this, show the absolute time instead of a countdown. */
+internal const val WIDGET_COUNTDOWN_MAX_MS = 4 * 60 * 60 * 1_000L
+
+/**
+ * Whole minutes, rounded up so the widget never reads "0m" while there is still time on the clock.
+ *
+ * Minutes rather than seconds is what lets this be plain text refreshed on a cadence instead of a
+ * system Chronometer — the framework's clock has no format without seconds in it.
+ */
+private fun remainingText(context: Context, targetEpochMs: Long): String {
+    val minutes = ((targetEpochMs - System.currentTimeMillis() + 59_999) / 60_000L).coerceAtLeast(0)
+    return if (minutes >= 60) {
+        context.getString(R.string.widget_remaining_hours, minutes / 60, minutes % 60)
+    } else {
+        context.getString(R.string.widget_remaining_minutes, minutes)
+    }
+}
 
 private fun shortDuration(minutes: Int): String {
     val safe = minutes.coerceAtLeast(0)
@@ -341,7 +454,7 @@ private fun BadgeChip(context: Context, snapshot: WidgetSnapshot) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = GlanceModifier
-            .background(ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF)))
+            .background(Pill)
             .cornerRadius(14.dp)
             .padding(horizontal = 9.dp, vertical = 6.dp),
     ) {
@@ -370,7 +483,7 @@ private fun WidgetAction(
 ) {
     val background = when {
         emphasised -> ColorProvider(Color(0xFFE9B44C), Color(0xFFD79E33))
-        subdued -> ColorProvider(Color(0x2BFFFFFF), Color(0x24FFFFFF))
+        subdued -> Pill
         else -> Surface
     }
     val foreground = if (subdued) OnDark else Ink
@@ -424,9 +537,47 @@ private fun Long.asLocalTime(): String = Instant.ofEpochMilli(this)
     .format(DateTimeFormatter.ofPattern("HH:mm"))
 
 /**
+ * Reads appearance straight from the preferences proto.
+ *
+ * The widget deliberately does not go through the repository: it is rendered from a broadcast
+ * receiver, where constructing the database and its migrations to find out which green to use
+ * would be an absurd amount of work for a colour.
+ */
+private fun PacePreferences.toStyle(): WidgetStyle = WidgetStyle(
+    accent = when (accentPalette) {
+        AccentPaletteProto.ACCENT_PALETTE_OCEAN -> AccentPalette.OCEAN
+        AccentPaletteProto.ACCENT_PALETTE_EMBER -> AccentPalette.EMBER
+        AccentPaletteProto.ACCENT_PALETTE_VIOLET -> AccentPalette.VIOLET
+        AccentPaletteProto.ACCENT_PALETTE_SLATE -> AccentPalette.SLATE
+        else -> AccentPalette.SAGE
+    },
+    settings = WidgetSettings(
+        background = when (widgetBackground) {
+            WidgetBackgroundProto.WIDGET_BACKGROUND_SOLID -> WidgetBackground.SOLID
+            WidgetBackgroundProto.WIDGET_BACKGROUND_GLASS -> WidgetBackground.GLASS
+            else -> WidgetBackground.GRADIENT
+        },
+        cornerRadiusDp = widgetCornerRadiusDp.takeIf { it in 1..40 } ?: 24,
+        opacityPercent = widgetOpacityPercent.takeIf { it in 35..100 } ?: 100,
+        showQuote = !widgetHideQuote,
+        showStats = !widgetHideStats,
+        showActions = !widgetHideActions,
+        showCountdown = !widgetHideCountdown,
+        showStreak = !widgetHideStreak,
+        confirmLog = !widgetSkipLogConfirm,
+        livePulse = !widgetDisablePulse,
+        tick = when (widgetTick) {
+            WidgetTickProto.WIDGET_TICK_LIVE -> WidgetTick.LIVE
+            WidgetTickProto.WIDGET_TICK_OFF -> WidgetTick.OFF
+            else -> WidgetTick.SAVER
+        },
+    ),
+)
+
+/**
  * Two-step by design. A widget sits under a thumb all day, and an accidental tap writes a
  * cigarette that never happened — which corrupts exactly the history the whole app reasons from.
- * The first tap only arms the button.
+ * The first tap only arms the button, unless the user has turned confirmation off.
  */
 class WidgetLogAction : ActionCallback {
     override suspend fun onAction(

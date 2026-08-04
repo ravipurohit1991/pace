@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A light-from-above sheen laid over whichever accent colour the widget is currently using.
+
+  Doing the gradient this way — one neutral overlay rather than a coloured drawable per palette —
+  means adding an accent costs two Kotlin colours and no new resources, and the sheen keeps the
+  same weight across all of them.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#33FFFFFF"
+        android:centerColor="#0DFFFFFF"
+        android:endColor="#1A000000"
+        android:type="linear" />
+</shape>

@@ -23,6 +23,7 @@ import com.pace.reduction.domain.model.DailyCount
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.TodaySummary
 import com.pace.reduction.domain.model.UrgeSession
+import com.pace.reduction.domain.model.WidgetSettings
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -38,7 +39,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -55,6 +59,7 @@ data class PaceUiState(
     val spacing: SpacingProgress? = null,
     val achievements: List<Achievement> = emptyList(),
     val activePause: ActivePause = ActivePause(),
+    val widget: WidgetSettings = WidgetSettings(),
     val ai: AiSettings = AiSettings(),
     val coachMessages: List<CoachMessage> = emptyList(),
     val now: Instant = Instant.now(),
@@ -93,6 +98,7 @@ sealed interface PaceEvent {
 
 private data class CoreState(
     val settings: PlanSettings,
+    val widget: WidgetSettings,
     val logs: List<CigaretteLog>,
     val sessions: List<UrgeSession>,
     val snapshots: List<com.pace.reduction.domain.model.DailyPlanSnapshot>,
@@ -119,24 +125,50 @@ class PaceViewModel(
     val coachState: StateFlow<CoachUiState> = _coachState.asStateFlow()
     private var coachJob: Job? = null
 
-    private val ticker: Flow<Instant> = flow {
-        while (true) {
-            emit(Instant.now())
-            delay(1_000)
+    /**
+     * Drives every derived figure on screen, so its rate is the app's foreground cost.
+     *
+     * Each emission recomputes the full history — progress, pacing and quit metrics — and
+     * recomposes Today. Only the Toolkit's five-minute pause is displayed to the second and
+     * genuinely needs 1 Hz; everything else is stated in whole minutes, where a second-by-second
+     * rebuild is roughly fifty-nine parts waste. So the fast rate is spent only while a pause is
+     * actually running.
+     *
+     * [SharingStarted.WhileSubscribed] already stops this a few seconds after the app is left, so
+     * none of it runs in the background either way.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val ticker: Flow<Instant> = repository.activePause
+        .map { it.isRunning }
+        .distinctUntilChanged()
+        .flatMapLatest { pauseRunning ->
+            val periodMs = if (pauseRunning) 1_000L else IDLE_TICK_MS
+            flow {
+                while (true) {
+                    emit(Instant.now())
+                    delay(periodMs)
+                }
+            }
         }
-    }
 
     private val _events = MutableSharedFlow<PaceEvent>(extraBufferCapacity = 8)
     val events: Flow<PaceEvent> = _events
 
-    private val coreState = combine(
+    /** Both halves come off the same preferences store, so pairing them costs nothing and keeps
+     *  [coreState] inside `combine`'s five-flow overload. */
+    private val preferences = combine(
         repository.settings,
+        repository.widgetSettings,
+    ) { plan, widget -> plan to widget }
+
+    private val coreState = combine(
+        preferences,
         repository.activeLogs,
         repository.urgeSessions,
         repository.dailySnapshots,
         ticker,
-    ) { settings, logs, urgeSessions, snapshots, now ->
-        CoreState(settings, logs, urgeSessions, snapshots, now)
+    ) { (settings, widget), logs, urgeSessions, snapshots, now ->
+        CoreState(settings, widget, logs, urgeSessions, snapshots, now)
     }
 
     private val aiState = combine(
@@ -190,6 +222,7 @@ class PaceViewModel(
             spacing = spacing,
             achievements = achievements,
             activePause = activePause,
+            widget = core.widget,
             ai = ai.settings,
             coachMessages = ai.messages,
             now = core.now,
@@ -212,6 +245,18 @@ class PaceViewModel(
             repository.updatePlan(plan)
             _events.emit(PaceEvent.PlanSaved)
         }
+    }
+
+    /**
+     * Appearance applies immediately and says nothing — a confirmation toast for a colour the user
+     * can already see change would only get in the way of trying the next one.
+     */
+    fun saveAppearance(plan: PlanSettings) {
+        viewModelScope.launch { repository.updatePlan(plan) }
+    }
+
+    fun saveWidgetSettings(widget: WidgetSettings) {
+        viewModelScope.launch { repository.updateWidgetSettings(widget) }
     }
 
     fun logCigarette() {
@@ -520,6 +565,12 @@ class PaceViewModel(
     }
 
     companion object {
+        /**
+         * Fast enough that a window opening feels immediate and the "1h 36m" line never looks
+         * wrong, slow enough that sitting on Today is not a busy loop.
+         */
+        private const val IDLE_TICK_MS = 5_000L
+
         fun factory(application: PaceApplication): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")

@@ -11,6 +11,51 @@ enum class ReminderIntensity { OFF, GENTLE, STANDARD }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** Accent families the whole app and the widget are tinted from. */
+enum class AccentPalette { SAGE, OCEAN, EMBER, VIOLET, SLATE }
+
+/**
+ * How much the interface is allowed to move. NONE still changes state, it just cuts straight
+ * there — it is the accessibility escape hatch, not a downgrade of the app.
+ */
+enum class MotionLevel { FULL, SUBTLE, NONE }
+
+enum class WidgetBackground { GRADIENT, SOLID, GLASS }
+
+/** How often the widget redraws while a countdown is on screen. */
+enum class WidgetTick { SAVER, LIVE, OFF }
+
+/**
+ * Everything about the home-screen widget the user can change. Kept apart from [PlanSettings]
+ * because none of it affects the plan, and the widget reads it on its own.
+ */
+data class WidgetSettings(
+    val background: WidgetBackground = WidgetBackground.GRADIENT,
+    val cornerRadiusDp: Int = 24,
+    val opacityPercent: Int = 100,
+    val showQuote: Boolean = true,
+    val showStats: Boolean = true,
+    val showActions: Boolean = true,
+    val showCountdown: Boolean = true,
+    val showStreak: Boolean = true,
+    /** Two taps to log. Off means one tap writes immediately. */
+    val confirmLog: Boolean = true,
+    /** The animated bar under the countdown — the only thing on a widget that truly moves. */
+    val livePulse: Boolean = true,
+    val tick: WidgetTick = WidgetTick.SAVER,
+) {
+    /**
+     * Milliseconds between refreshes while a countdown is showing, or null to only redraw at the
+     * boundary — in which case the widget drops the remaining time rather than show a stale one.
+     */
+    val tickIntervalMs: Long?
+        get() = when (tick) {
+            WidgetTick.LIVE -> 60_000L
+            WidgetTick.SAVER -> 10 * 60_000L
+            WidgetTick.OFF -> null
+        }
+}
+
 data class PlanSettings(
     val onboardingCompleted: Boolean = false,
     val baselinePerDay: Int = 12,
@@ -35,6 +80,12 @@ data class PlanSettings(
     val notificationPrivate: Boolean = true,
     val hapticsEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val accentPalette: AccentPalette = AccentPalette.SAGE,
+    /** Material You. Overrides [accentPalette] when the device supports it. */
+    val dynamicColor: Boolean = false,
+    /** True black surfaces in dark mode, for OLED panels. */
+    val amoledDark: Boolean = false,
+    val motionLevel: MotionLevel = MotionLevel.FULL,
     val quitMode: Boolean = false,
     val quitDate: LocalDate? = null,
     /** When on, the effective minimum gap grows as steady days accumulate. */

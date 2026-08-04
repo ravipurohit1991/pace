@@ -51,7 +51,13 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = systemBarStyle,
                 )
             }
-            PaceTheme(darkTheme = darkTheme) {
+            PaceTheme(
+                darkTheme = darkTheme,
+                accent = uiState.settings.accentPalette,
+                dynamicColor = uiState.settings.dynamicColor,
+                amoledDark = uiState.settings.amoledDark,
+                motionLevel = uiState.settings.motionLevel,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

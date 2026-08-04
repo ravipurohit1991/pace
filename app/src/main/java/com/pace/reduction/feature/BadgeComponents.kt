@@ -1,5 +1,6 @@
 package com.pace.reduction.feature
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,6 +38,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pace.reduction.R
+import com.pace.reduction.core.designsystem.LocalMotion
+import com.pace.reduction.core.designsystem.breathe
+import com.pace.reduction.core.designsystem.entrance
 import com.pace.reduction.domain.BadgeCatalogue
 import com.pace.reduction.domain.BadgeFamily
 import com.pace.reduction.domain.model.Achievement
@@ -63,7 +68,7 @@ private fun visualFor(family: BadgeFamily): FamilyVisual = when (family) {
 internal fun BadgeFamilyList(earned: List<Achievement>) {
     val earnedIds = earned.map { it.badgeId }.toSet()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        BadgeFamily.entries.forEach { family ->
+        BadgeFamily.entries.forEachIndexed { index, family ->
             val tiers = BadgeCatalogue.forFamily(family)
             val earnedTiers = tiers.filter { it.id in earnedIds }
             val next = tiers.firstOrNull { it.id !in earnedIds }
@@ -73,6 +78,7 @@ internal fun BadgeFamilyList(earned: List<Achievement>) {
                 totalCount = tiers.size,
                 bestThreshold = earnedTiers.maxOfOrNull { it.threshold },
                 nextThreshold = next?.threshold,
+                index = index,
             )
         }
     }
@@ -85,15 +91,29 @@ private fun FamilyRow(
     totalCount: Int,
     bestThreshold: Long?,
     nextThreshold: Long?,
+    index: Int,
 ) {
+    val motion = LocalMotion.current
     val visual = visualFor(family)
     val unlocked = earnedCount > 0
+    val complete = totalCount > 0 && earnedCount == totalCount
     val container = if (unlocked) visual.tint.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant
     val content = if (unlocked) visual.tint else MaterialTheme.colorScheme.outline
+    // The bar fills rather than appears, so opening Progress plays back the earning of it.
+    val progress by animateFloatAsState(
+        targetValue = if (totalCount == 0) 0f else earnedCount.toFloat() / totalCount,
+        animationSpec = motion.eased(700),
+        label = "familyProgress",
+    )
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.entrance(index)) {
         Box(
-            modifier = Modifier.size(46.dp).background(container, CircleShape),
+            modifier = Modifier
+                .size(46.dp)
+                // Only a finished family gets a heartbeat. If every row pulsed, none would read
+                // as an achievement.
+                .then(if (complete) Modifier.breathe(0.94f, 1.06f, 3_200) else Modifier)
+                .background(container, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(visual.icon, contentDescription = null, tint = content, modifier = Modifier.size(24.dp))
@@ -115,8 +135,12 @@ private fun FamilyRow(
             }
             Spacer(Modifier.height(4.dp))
             LinearProgressIndicator(
-                progress = { if (totalCount == 0) 0f else earnedCount.toFloat() / totalCount },
+                progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(5.dp),
+                color = if (unlocked) visual.tint else MaterialTheme.colorScheme.outline,
+                // Stated rather than defaulted: the default track picks up the accent, and a
+                // family with nothing earned then reads as a full bar.
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Spacer(Modifier.height(3.dp))
             Text(
