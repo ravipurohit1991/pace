@@ -112,12 +112,33 @@ no AI key.
 ### A widget worth keeping
 
 Time until your next window as the headline figure, today's count against the ceiling, a proportional
-ceiling meter, clean-stretch and money pills, your badge count, a line that refreshes hourly, and icon-only
-log/undo actions. It re-renders exactly when a window ends, so the countdown is never stale.
+ceiling meter, clean-stretch and money pills, your badge count, a line that refreshes hourly, and Talk and
+Log actions. It re-renders exactly when a window ends, so the countdown never outlives the wait.
+
+Under the meter runs an indeterminate progress bar — the one thing on a home-screen widget that genuinely
+moves, animated by the system with no app process running, so a widget mid-wait never looks frozen. The
+remaining time itself is stated in whole minutes and recalculated on a cadence you choose: every minute,
+every ten, or never. Refreshing stops the moment your window opens and never runs through an overnight rest
+window.
 
 | Badges | Home-screen widget |
 | --- | --- |
 | ![Badges](docs/screenshots/09-badges.png) | ![Widget](docs/screenshots/10-widget.png) |
+
+### Make it yours
+
+Five accent families — Sage, Ocean, Ember, Violet, Slate — carried through the app *and* the widget, plus
+Material You if you would rather follow your wallpaper, and a true-black dark mode for OLED screens.
+
+**Motion** is a first-class setting rather than an afterthought. Full adds drifting gradients, breathing
+rings and rolling counters; Subtle keeps the transitions and drops the decoration; None cuts straight to
+each state. Turning animations off system-wide always wins, so nobody has to find this screen twice.
+
+The widget gets its own panel: surface style, corner rounding, opacity, every row it draws, whether logging
+takes one tap or two, and the refresh cadence. Each change lands on the home screen as you make it, and a
+working miniature sits above the controls — a widget is the one surface you cannot see while configuring it.
+
+![Widget and motion settings](docs/screenshots/14-widget-settings.png)
 
 ---
 
