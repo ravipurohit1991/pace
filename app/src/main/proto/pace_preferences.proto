@@ -21,6 +21,35 @@ enum ThemeModeProto {
   THEME_MODE_DARK = 2;
 }
 
+enum AccentPaletteProto {
+  ACCENT_PALETTE_SAGE = 0;
+  ACCENT_PALETTE_OCEAN = 1;
+  ACCENT_PALETTE_EMBER = 2;
+  ACCENT_PALETTE_VIOLET = 3;
+  ACCENT_PALETTE_SLATE = 4;
+}
+
+// Ordered so proto3's zero default is the richest experience; users step down from it.
+enum MotionLevelProto {
+  MOTION_LEVEL_FULL = 0;
+  MOTION_LEVEL_SUBTLE = 1;
+  MOTION_LEVEL_NONE = 2;
+}
+
+enum WidgetBackgroundProto {
+  WIDGET_BACKGROUND_GRADIENT = 0;
+  WIDGET_BACKGROUND_SOLID = 1;
+  WIDGET_BACKGROUND_GLASS = 2;
+}
+
+// SAVER is the default: the widget's own Chronometer already ticks every second, so extra
+// refreshes only exist to move the progress bar and the stats.
+enum WidgetTickProto {
+  WIDGET_TICK_SAVER = 0;
+  WIDGET_TICK_LIVE = 1;
+  WIDGET_TICK_OFF = 2;
+}
+
 message PacePreferences {
   int32 schema_version = 1;
   bool onboarding_completed = 2;
@@ -79,6 +108,25 @@ message PacePreferences {
   bool high_urge_window_enabled = 54;
   int32 high_urge_start_minutes = 55;
   int32 high_urge_end_minutes = 56;
+
+  // Appearance. Booleans here are phrased so proto3's false default is the intended default.
+  AccentPaletteProto accent_palette = 57;
+  bool dynamic_color = 58;
+  bool amoled_dark = 59;
+  MotionLevelProto motion_level = 60;
+
+  // Widget appearance and behaviour.
+  WidgetBackgroundProto widget_background = 61;
+  int32 widget_corner_radius_dp = 62;
+  int32 widget_opacity_percent = 63;
+  bool widget_hide_quote = 64;
+  bool widget_hide_stats = 65;
+  bool widget_hide_actions = 66;
+  bool widget_hide_countdown = 67;
+  bool widget_hide_streak = 68;
+  bool widget_skip_log_confirm = 69;
+  bool widget_disable_pulse = 70;
+  WidgetTickProto widget_tick = 71;
 }
 
 enum WidgetStateProto {
@@ -114,4 +162,7 @@ message WidgetSnapshot {
   int64 quote_generated_epoch_ms = 20;
   // Set by the first widget log tap; a second tap before this expires commits it.
   int64 log_armed_until_epoch_ms = 21;
+  // 22 and 23 anchored two system Chronometers. The widget now states its figures in whole
+  // minutes, which needs only the totals above, so both are retired rather than left to rot.
+  reserved 22, 23;
 }

@@ -1,6 +1,17 @@
 package com.pace.reduction.feature
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircle
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Psychology
@@ -58,14 +70,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,6 +96,11 @@ import com.pace.reduction.PaceEvent
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
+import com.pace.reduction.core.designsystem.LocalMotion
+import com.pace.reduction.core.designsystem.breathe
+import com.pace.reduction.core.designsystem.entrance
+import com.pace.reduction.core.designsystem.pressScale
+import com.pace.reduction.core.designsystem.pulseAlpha
 import com.pace.reduction.domain.BadgeCatalogue
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.ReductionPlanner
@@ -191,10 +213,24 @@ fun PaceApp(viewModel: PaceViewModel) {
 private fun LoadingScreen() {
     val loadingDescription = stringResource(R.string.loading_pace)
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(modifier = Modifier.semantics {
-            contentDescription = loadingDescription
-        })
+        CircularProgressIndicator(
+            modifier = Modifier
+                .breathe(0.94f, 1.06f, 2_000)
+                .semantics { contentDescription = loadingDescription },
+        )
     }
+}
+
+/** Lifts the selected tab's icon. Split out so the animation state is not rebuilt per recomposition. */
+@Composable
+private fun Modifier.navSelectionScale(selected: Boolean): Modifier {
+    val motion = LocalMotion.current
+    val factor by animateFloatAsState(
+        targetValue = if (selected && motion.enabled) 1.12f else 1f,
+        animationSpec = motion.springy(),
+        label = "navIcon",
+    )
+    return this.scale(factor)
 }
 
 @Composable
@@ -223,21 +259,36 @@ private fun MainShell(
         NavigationItem(ProgressDestination, R.string.nav_progress, Icons.Outlined.BarChart),
     )
     val current = backStack.lastOrNull()
+    val motion = LocalMotion.current
+    val haptics = LocalHapticFeedback.current
+    val hapticsEnabled = uiState.settings.hapticsEnabled
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 navigationItems.forEach { item ->
+                    val selected = current == item.key
                     NavigationBarItem(
-                        selected = current == item.key,
+                        selected = selected,
                         onClick = {
-                            if (current != item.key) {
+                            if (!selected) {
+                                if (hapticsEnabled) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
                                 backStack.clear()
                                 backStack.add(item.key)
                             }
                         },
-                        icon = { Icon(item.icon, contentDescription = null) },
+                        icon = {
+                            // The selected tab's icon lifts a fraction, which reads as depth on a
+                            // bar where the pill indicator alone is easy to miss in peripheral vision.
+                            Icon(
+                                item.icon,
+                                contentDescription = null,
+                                modifier = Modifier.navSelectionScale(selected),
+                            )
+                        },
                         label = { Text(stringResource(item.label)) },
                     )
                 }
@@ -249,6 +300,26 @@ private fun MainShell(
             modifier = Modifier.padding(innerPadding),
             onBack = {
                 if (backStack.size > 1) backStack.removeLastOrNull()
+            },
+            // The library default is a 700ms crossfade, which on a phone reads as lag rather than
+            // grace. A short slide in the direction of travel says which way the stack moved.
+            transitionSpec = {
+                (
+                    slideInHorizontally(motion.eased(300)) { width -> width / 5 } +
+                        fadeIn(motion.eased(240))
+                    ) togetherWith (
+                    slideOutHorizontally(motion.eased(300)) { width -> -width / 12 } +
+                        fadeOut(motion.eased(180))
+                    )
+            },
+            popTransitionSpec = {
+                (
+                    slideInHorizontally(motion.eased(300)) { width -> -width / 12 } +
+                        fadeIn(motion.eased(240))
+                    ) togetherWith (
+                    slideOutHorizontally(motion.eased(300)) { width -> width / 5 } +
+                        fadeOut(motion.eased(180))
+                    )
             },
             entryProvider = entryProvider {
                 entry<TodayDestination> {
@@ -357,20 +428,13 @@ private fun TodayScreen(
                 },
             )
         }
-        item { PacingHero(uiState) }
+        item { Box(Modifier.entrance(0)) { PacingHero(uiState) } }
         item {
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = 20.dp).entrance(1),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Button(
-                    onClick = onLog,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) {
-                    Icon(Icons.Outlined.AddCircle, contentDescription = null)
-                    Spacer(Modifier.size(10.dp))
-                    Text(stringResource(R.string.log_cigarette))
-                }
+                LogButton(onLog = onLog, hapticsEnabled = uiState.settings.hapticsEnabled)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = onOpenCoach, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Outlined.Forum, contentDescription = null)
@@ -388,7 +452,7 @@ private fun TodayScreen(
         if (quit != null) {
             item {
                 Row(
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp).entrance(2),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     StatTile(
@@ -415,10 +479,12 @@ private fun TodayScreen(
                     }
                 }
             }
-            item { NextMilestoneCard(quit, modifier = Modifier.padding(horizontal = 20.dp)) }
+            item {
+                NextMilestoneCard(quit, modifier = Modifier.padding(horizontal = 20.dp).entrance(3))
+            }
         }
         item {
-            SectionCard(modifier = Modifier.padding(horizontal = 20.dp)) {
+            SectionCard(modifier = Modifier.padding(horizontal = 20.dp).entrance(4)) {
                 Text(coachingMessage, style = MaterialTheme.typography.titleMedium)
                 if (uiState.settings.personalReason.isNotBlank()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
@@ -455,13 +521,70 @@ private fun TodayScreen(
     }
 }
 
+/**
+ * The one destructive-ish button on the screen, so it answers the finger before the database does.
+ *
+ * It shrinks under the press, thumps once, and flips to a plain acknowledgement for a beat. The
+ * acknowledgement is the point: logging honestly is the behaviour this app most needs to stay
+ * easy, so the moment after a tap has to feel like being met rather than being marked down.
+ */
+@Composable
+private fun LogButton(onLog: () -> Unit, hapticsEnabled: Boolean) {
+    val motion = LocalMotion.current
+    val haptics = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    var acknowledged by remember { mutableStateOf(false) }
+
+    LaunchedEffect(acknowledged) {
+        if (acknowledged) {
+            kotlinx.coroutines.delay(1_400)
+            acknowledged = false
+        }
+    }
+
+    Button(
+        onClick = {
+            if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            acknowledged = true
+            onLog()
+        },
+        interactionSource = interaction,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .pressScale(interaction),
+    ) {
+        AnimatedContent(
+            targetState = acknowledged,
+            transitionSpec = {
+                (scaleIn(motion.springy(), initialScale = 0.8f) + fadeIn(motion.eased(200))) togetherWith
+                    fadeOut(motion.eased(160))
+            },
+            label = "logButton",
+        ) { done ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (done) Icons.Outlined.CheckCircle else Icons.Outlined.AddCircle,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(stringResource(if (done) R.string.cigarette_logged else R.string.log_cigarette))
+            }
+        }
+    }
+}
+
 /** Ring + status + next-window countdown, the first thing you see each day. */
 @Composable
 private fun PacingHero(uiState: PaceUiState) {
     val today = requireNotNull(uiState.today)
+    val motion = LocalMotion.current
     val statusTitle: String
     val statusDetail: String
     val accent: Color
+    /** How far through the current wait, or null when nothing is being waited for. */
+    val windowProgress: Float?
+    val windowOpen: Boolean
 
     when (val status = today.status) {
         is PacingStatus.Spacing -> {
@@ -472,11 +595,19 @@ private fun PacingHero(uiState: PaceUiState) {
                 status.earliestWindow.format(DateTimeFormatter.ofPattern("HH:mm")),
             )
             accent = MaterialTheme.colorScheme.primary
+            windowProgress = waitProgress(
+                now = uiState.now,
+                target = status.earliestWindow.toInstant(),
+                spanMinutes = uiState.spacing?.effectiveMinutes ?: uiState.settings.minimumGapMinutes,
+            )
+            windowOpen = false
         }
         is PacingStatus.WindowMet -> {
             statusTitle = stringResource(R.string.status_window_met)
             statusDetail = stringResource(R.string.status_window_met_detail)
             accent = MaterialTheme.colorScheme.primary
+            windowProgress = null
+            windowOpen = true
         }
         is PacingStatus.MorningHold -> {
             statusTitle = stringResource(R.string.status_morning_hold)
@@ -485,6 +616,12 @@ private fun PacingHero(uiState: PaceUiState) {
                 status.until.format(DateTimeFormatter.ofPattern("HH:mm")),
             )
             accent = MaterialTheme.colorScheme.secondary
+            windowProgress = waitProgress(
+                now = uiState.now,
+                target = status.until.toInstant(),
+                spanMinutes = uiState.settings.morningHoldMinutes,
+            )
+            windowOpen = false
         }
         is PacingStatus.Rest -> {
             statusTitle = stringResource(R.string.status_rest)
@@ -493,51 +630,111 @@ private fun PacingHero(uiState: PaceUiState) {
                 status.nextWake.format(DateTimeFormatter.ofPattern("HH:mm")),
             )
             accent = MaterialTheme.colorScheme.secondary
+            windowProgress = null
+            windowOpen = false
         }
         PacingStatus.CeilingReached -> {
             statusTitle = stringResource(R.string.status_ceiling)
             statusDetail = stringResource(R.string.status_ceiling_detail)
             accent = MaterialTheme.colorScheme.secondary
+            windowProgress = null
+            windowOpen = false
         }
         PacingStatus.Recovery -> {
             statusTitle = stringResource(R.string.status_recovery)
             statusDetail = stringResource(R.string.status_recovery_detail)
             accent = MaterialTheme.colorScheme.tertiary
+            windowProgress = null
+            windowOpen = false
         }
     }
+
+    // The card itself carries the accent as a faint wash, so the hero belongs to the current state
+    // rather than sitting on neutral card stock like every other section.
+    val wash = accent.copy(alpha = if (isSystemInDarkTheme()) 0.16f else 0.10f)
+    val animatedWash by animateColorAsState(wash, motion.eased(500), label = "heroWash")
 
     Card(
         modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 22.dp, horizontal = 20.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        Box(
+            modifier = Modifier.background(
+                Brush.verticalGradient(listOf(animatedWash, Color.Transparent)),
+            ),
         ) {
-            ProgressRing(count = today.count, ceiling = today.ceiling, accent = accent)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(9.dp).background(accent, CircleShape))
-                Spacer(Modifier.size(8.dp))
-                Text(statusTitle, style = MaterialTheme.typography.titleLarge)
-            }
-            Text(statusDetail, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                if (today.lastLogAt == null) {
-                    stringResource(R.string.no_logs_today)
-                } else {
-                    stringResource(
-                        R.string.last_logged_at,
-                        today.lastLogAt.atZone(java.time.ZoneId.systemDefault())
-                            .format(DateTimeFormatter.ofPattern("HH:mm")),
+            Column(
+                modifier = Modifier.padding(vertical = 24.dp, horizontal = 20.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                ProgressRing(
+                    count = today.count,
+                    ceiling = today.ceiling,
+                    accent = accent,
+                    windowProgress = windowProgress,
+                    glow = windowOpen,
+                    modifier = if (windowOpen) Modifier.breathe(0.985f, 1.015f) else Modifier,
+                )
+                StatusLine(title = statusTitle, accent = accent, live = windowProgress != null)
+                AnimatedContent(
+                    targetState = statusDetail,
+                    transitionSpec = { fadeIn(motion.eased(220)) togetherWith fadeOut(motion.eased(180)) },
+                    label = "statusDetail",
+                ) { detail ->
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
                     )
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                }
+                Text(
+                    if (today.lastLogAt == null) {
+                        stringResource(R.string.no_logs_today)
+                    } else {
+                        stringResource(
+                            R.string.last_logged_at,
+                            today.lastLogAt.atZone(java.time.ZoneId.systemDefault())
+                                .format(DateTimeFormatter.ofPattern("HH:mm")),
+                        )
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
+}
+
+/** The status headline, with a dot that keeps a slow beat while a wait is actually running. */
+@Composable
+private fun StatusLine(title: String, accent: Color, live: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(9.dp)
+                .then(if (live) Modifier.pulseAlpha(0.3f, 1f, 1_800) else Modifier)
+                .background(accent, CircleShape),
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+/**
+ * Fraction of a wait already served, from the time still left and how long the wait was.
+ *
+ * Derived rather than stored because the start of a wait is not always a recorded event — a
+ * morning hold begins at whatever wake time the plan says, and back-solving from the deadline
+ * gives the same answer without another field to keep honest.
+ */
+private fun waitProgress(now: java.time.Instant, target: java.time.Instant, spanMinutes: Int): Float? {
+    if (spanMinutes <= 0) return null
+    val remaining = Duration.between(now, target).toMillis()
+    if (remaining <= 0L) return 1f
+    val span = spanMinutes * 60_000f
+    return ((span - remaining) / span).coerceIn(0f, 1f)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -972,28 +1169,19 @@ private fun ProgressScreen(uiState: PaceUiState) {
                     FilterChip(selected = rangeDays == 30, onClick = { rangeDays = 30 }, label = { Text(stringResource(R.string.thirty_days)) })
                 }
                 Spacer(Modifier.height(6.dp))
-                visibleDays.forEach { day ->
-                    Column(modifier = Modifier.padding(vertical = 5.dp)) {
-                        Row {
-                            Text(
-                                day.date.dayOfWeek.name.take(3),
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Text(
-                                if (day.recorded) {
-                                    stringResource(R.string.day_count_accessible, day.count, day.ceiling ?: uiState.settings.dailyCeiling)
-                                } else {
-                                    stringResource(R.string.day_unknown)
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { if (day.recorded) day.count.toFloat() / max.toFloat() else 0f },
-                            modifier = Modifier.fillMaxWidth().height(7.dp),
-                        )
-                    }
+                visibleDays.forEachIndexed { index, day ->
+                    val ceiling = day.ceiling ?: uiState.settings.dailyCeiling
+                    DayBar(
+                        label = day.date.dayOfWeek.name.take(3),
+                        value = if (day.recorded) {
+                            stringResource(R.string.day_count_accessible, day.count, ceiling)
+                        } else {
+                            stringResource(R.string.day_unknown)
+                        },
+                        fraction = if (day.recorded) day.count.toFloat() / max.toFloat() else 0f,
+                        overCeiling = day.recorded && ceiling > 0 && day.count > ceiling,
+                        index = index,
+                    )
                 }
             }
         }
@@ -1069,6 +1257,53 @@ private fun ProgressScreen(uiState: PaceUiState) {
                 BadgeFamilyList(uiState.achievements)
             }
         }
+    }
+}
+
+/**
+ * One day of history.
+ *
+ * The bars grow from nothing as the list arrives, staggered by row, so a week of history reads
+ * left-to-right like a chart being drawn rather than appearing pre-drawn — and a day that went
+ * over its ceiling recolours instead of needing a legend.
+ */
+@Composable
+private fun DayBar(
+    label: String,
+    value: String,
+    fraction: Float,
+    overCeiling: Boolean,
+    index: Int,
+) {
+    val motion = LocalMotion.current
+    // Saved, not remembered: these rows live in a lazy list, and a chart that redraws itself every
+    // time it scrolls back into view stops reading as a chart.
+    var shown by rememberSaveable { mutableStateOf(false) }
+    val animated by animateFloatAsState(
+        targetValue = if (shown) fraction.coerceIn(0f, 1f) else 0f,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = motion.duration(520),
+            delayMillis = motion.duration((index * 40).coerceAtMost(320)),
+        ),
+        label = "dayBar",
+    )
+    LaunchedEffect(Unit) { shown = true }
+
+    Column(modifier = Modifier.padding(vertical = 5.dp)) {
+        Row {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+            Text(value, style = MaterialTheme.typography.labelMedium)
+        }
+        LinearProgressIndicator(
+            progress = { animated },
+            modifier = Modifier.fillMaxWidth().height(7.dp),
+            color = if (overCeiling) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
     }
 }
 

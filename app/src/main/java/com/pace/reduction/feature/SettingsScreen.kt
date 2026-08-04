@@ -36,8 +36,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pace.reduction.BuildConfig
 import com.pace.reduction.PaceUiState
@@ -57,8 +60,10 @@ import com.pace.reduction.R
 import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.ReminderIntensity
-import com.pace.reduction.domain.model.ThemeMode
+import com.pace.reduction.widget.PaceWidget
+import com.pace.reduction.widget.PaceWidgetReceiver
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,12 +78,19 @@ internal fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    var theme by rememberSaveable(uiState.settings.themeMode) { mutableStateOf(uiState.settings.themeMode) }
+    val scope = rememberCoroutineScope()
     var reminder by rememberSaveable(uiState.settings.reminderIntensity) { mutableStateOf(uiState.settings.reminderIntensity) }
     var haptics by rememberSaveable(uiState.settings.hapticsEnabled) { mutableStateOf(uiState.settings.hapticsEnabled) }
     var deleteStepTwo by rememberSaveable { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
     var notificationEducation by rememberSaveable { mutableStateOf(false) }
+    var widgetInstalled by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        widgetInstalled = GlanceAppWidgetManager(context)
+            .getGlanceIds(PaceWidget::class.java)
+            .isNotEmpty()
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -104,37 +116,25 @@ internal fun SettingsScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // Appearance changes as you tap it, not on a later Save — a colour you have to commit
+            // to before seeing is a colour you cannot choose.
+            item { AppearanceSection(uiState.settings, viewModel::saveAppearance) }
             item {
-                SectionCard {
-                    Text(stringResource(R.string.appearance_title), style = MaterialTheme.typography.titleLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ThemeMode.entries.forEach { option ->
-                            FilterChip(
-                                selected = theme == option,
-                                // Appearance should change as you tap it, not on a later Save.
-                                onClick = {
-                                    theme = option
-                                    onSave(uiState.settings.copy(themeMode = option))
-                                },
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            when (option) {
-                                                ThemeMode.SYSTEM -> R.string.theme_system
-                                                ThemeMode.LIGHT -> R.string.theme_light
-                                                ThemeMode.DARK -> R.string.theme_dark
-                                            },
-                                        ),
-                                    )
-                                },
+                WidgetSection(
+                    widget = uiState.widget,
+                    accent = uiState.settings.accentPalette,
+                    dynamicColor = uiState.settings.dynamicColor,
+                    installed = widgetInstalled,
+                    onRequestPin = {
+                        scope.launch {
+                            GlanceAppWidgetManager(context).requestPinGlanceAppWidget(
+                                receiver = PaceWidgetReceiver::class.java,
+                                preview = PaceWidget(),
                             )
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.haptics), modifier = Modifier.weight(1f))
-                        Switch(checked = haptics, onCheckedChange = { haptics = it })
-                    }
-                }
+                    },
+                    onChange = viewModel::saveWidgetSettings,
+                )
             }
             item {
                 SectionCard {
@@ -182,12 +182,18 @@ internal fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.open_system_notification_settings)) }
+                    SettingSwitch(
+                        title = stringResource(R.string.haptics),
+                        body = stringResource(R.string.haptics_body),
+                        checked = haptics,
+                        onCheckedChange = { haptics = it },
+                    )
                 }
             }
             item { AiCoachSection(uiState, viewModel) }
             item {
                 Button(
-                    onClick = { onSave(uiState.settings.copy(themeMode = theme, reminderIntensity = reminder, hapticsEnabled = haptics)) },
+                    onClick = { onSave(uiState.settings.copy(reminderIntensity = reminder, hapticsEnabled = haptics)) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.save_settings)) }
             }

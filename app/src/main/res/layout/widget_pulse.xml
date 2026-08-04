@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one element on a home-screen widget that genuinely moves.
+
+  An indeterminate ProgressBar is animated by the system frame by frame, with no app process
+  running and no refresh scheduled — the same mechanism that keeps an indeterminate notification
+  progress bar sweeping. Everything else a widget shows is a still image between updates; this
+  travels, which is what makes a waiting widget read as "still counting" rather than "stuck".
+
+  The tint is declared here rather than set from Kotlin because ProgressBar's tint setters are only
+  reachable through RemoteViews on API 31+, and white at low alpha sits correctly on every accent.
+-->
+<ProgressBar xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_pulse"
+    style="?android:attr/progressBarStyleHorizontal"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:alpha="0.55"
+    android:indeterminate="true"
+    android:indeterminateTint="#FFFFFFFF" />

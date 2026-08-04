@@ -3,8 +3,11 @@ package com.pace.reduction.feature
 import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -48,7 +51,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringArrayResource
@@ -66,6 +73,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
+import com.pace.reduction.core.designsystem.LocalMotion
+import com.pace.reduction.core.designsystem.breathe
 import com.pace.reduction.core.network.SafeLinks
 import java.time.Duration
 import kotlinx.coroutines.delay
@@ -274,11 +283,11 @@ private fun RescueCard(
                     if (plan.isNotBlank()) {
                         Text(plan, style = MaterialTheme.typography.bodyLarge)
                     }
-                    Text(
-                        formatToolkitTimer(remainingMillis),
-                        style = MaterialTheme.typography.displayMedium,
+                    BreathingTimer(
+                        remainingMillis = remainingMillis,
+                        totalMillis = PAUSE_LENGTH_MS,
+                        paused = timerPaused,
                         modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
@@ -342,6 +351,66 @@ private fun RescueCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * The five-minute pause, drawn as a ring that empties while a circle inside it breathes.
+ *
+ * The breathing is not decoration. A craving timer is watched, and a bare digit clock invites the
+ * user to count the seconds down; something with a slow, regular rhythm gives them a pace to
+ * follow instead — which is the whole intervention this screen is for. It stops the moment the
+ * timer is paused, so the animation always reflects whether time is actually running.
+ */
+@Composable
+private fun BreathingTimer(
+    remainingMillis: Long,
+    totalMillis: Long,
+    paused: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val motion = LocalMotion.current
+    val fraction = if (totalMillis <= 0L) 0f else (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
+    val animated by animateFloatAsState(fraction, motion.eased(900), label = "pauseRing")
+    val ringColor = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+    val fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+
+    Box(modifier = modifier.height(210.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .then(if (paused) Modifier else Modifier.breathe(0.82f, 1.06f, 4_000))
+                .background(fill, CircleShape),
+        )
+        Canvas(modifier = Modifier.size(196.dp)) {
+            val stroke = 10.dp.toPx()
+            val inset = stroke / 2
+            drawArc(
+                color = track,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - stroke, size.height - stroke),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = ringColor,
+                startAngle = -90f,
+                sweepAngle = 360f * animated,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - stroke, size.height - stroke),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        Text(
+            formatToolkitTimer(remainingMillis),
+            style = MaterialTheme.typography.displayMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -529,3 +598,6 @@ private fun formatToolkitTimer(milliseconds: Long): String {
     val totalSeconds = ((milliseconds + 999) / 1_000).coerceAtLeast(0)
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }
+
+/** Matches the pause the repository actually starts; the ring needs a denominator to empty against. */
+private const val PAUSE_LENGTH_MS = 5 * 60 * 1_000L
