@@ -27,7 +27,10 @@ class DailyRolloverWorker(context: Context, parameters: WorkerParameters) : Coro
 class CoachingEligibilityWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = runCatching {
         if (PaceNotifications.canPost(applicationContext) && applicationContext.repository().claimCoachingNotification()) {
-            PaceNotifications.postCoaching(applicationContext)
+            PaceNotifications.postCoaching(
+                applicationContext,
+                applicationContext.repository().notificationsArePrivate(),
+            )
         }
     }.fold({ Result.success() }, { Result.retry() })
 }
@@ -47,7 +50,11 @@ class CoachNudgeWorker(context: Context, parameters: WorkerParameters) : Corouti
         if (!PaceNotifications.canPost(applicationContext)) return@runCatching
         if (!applicationContext.repository().claimProactiveNudge()) return@runCatching
         val message = runCatching { applicationContext.coachService().nudge() }.getOrDefault("")
-        PaceNotifications.postCoachNudge(applicationContext, message)
+        PaceNotifications.postCoachNudge(
+            applicationContext,
+            message,
+            applicationContext.repository().notificationsArePrivate(),
+        )
     }.fold({ Result.success() }, { Result.retry() })
 }
 
@@ -60,7 +67,13 @@ class CoachCheckupWorker(context: Context, parameters: WorkerParameters) : Corou
         if (!PaceNotifications.canPost(applicationContext)) return@runCatching
         if (!applicationContext.repository().claimCheckup()) return@runCatching
         val message = runCatching { applicationContext.coachService().checkup() }.getOrDefault("")
-        if (message.isNotBlank()) PaceNotifications.postCoachCheckup(applicationContext, message)
+        if (message.isNotBlank()) {
+            PaceNotifications.postCoachCheckup(
+                applicationContext,
+                message,
+                applicationContext.repository().notificationsArePrivate(),
+            )
+        }
     }.fold({ Result.success() }, { Result.retry() })
 }
 

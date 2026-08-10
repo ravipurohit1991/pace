@@ -121,7 +121,7 @@ private fun PaceWidgetContent(
     val settings = style.settings
     val canUndo = snapshot.undoLogId.isNotBlank() && snapshot.undoExpiryEpochMs > System.currentTimeMillis()
     val coachIntent = Intent(context, MainActivity::class.java)
-        .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_COACH)
+        .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_CALL)
 
     Backdrop(style, size) {
         Column(
@@ -132,6 +132,11 @@ private fun PaceWidgetContent(
         ) {
             if (!configured) {
                 SetupState(context)
+                return@Column
+            }
+
+            if (snapshot.state == WidgetStateProto.WIDGET_STATE_REST) {
+                RestState(context, compact)
                 return@Column
             }
 
@@ -419,7 +424,6 @@ private fun countdownTargetEpochMs(snapshot: WidgetSnapshot): Long? {
 internal val COUNTDOWN_STATES = setOf(
     WidgetStateProto.WIDGET_STATE_SPACING,
     WidgetStateProto.WIDGET_STATE_MORNING_HOLD,
-    WidgetStateProto.WIDGET_STATE_REST,
 )
 
 /** Above this, show the absolute time instead of a countdown. */
@@ -446,6 +450,31 @@ private fun shortDuration(minutes: Int): String {
         safe >= 24 * 60 -> "${safe / (24 * 60)}d"
         safe >= 60 -> "${safe / 60}h"
         else -> "${safe}m"
+    }
+}
+
+/** A deliberately neutral overnight face: no count, time, stats, quote, or action prompt. */
+@Composable
+private fun RestState(context: Context, compact: Boolean) {
+    Column(
+        modifier = GlanceModifier.fillMaxSize(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = context.getString(R.string.rest_mode_title),
+            style = TextStyle(
+                color = OnDark,
+                fontSize = if (compact) 18.sp else 22.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+        )
+        Spacer(GlanceModifier.height(5.dp))
+        Text(
+            text = context.getString(R.string.widget_rest_body),
+            maxLines = 2,
+            style = TextStyle(color = Muted, fontSize = if (compact) 11.sp else 13.sp),
+        )
     }
 }
 

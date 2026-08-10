@@ -104,15 +104,19 @@ data class AiSettings(
     val enabled: Boolean = false,
     val apiKey: String = "",
     val model: String = "",
+    val visionModel: String = "",
     val proactiveNudges: Boolean = true,
     /** Empty means "use the built-in persona". */
     val systemPrompt: String = "",
+    /** Empty means "use the built-in instruction for photo turns". */
+    val imageSystemPrompt: String = "",
     /** Whether the grounded local figures are attached to each request. */
     val includeStats: Boolean = true,
     val checkupsEnabled: Boolean = false,
     val checkupIntervalMinutes: Int = 180,
 ) {
     val isReady: Boolean get() = enabled && apiKey.isNotBlank() && model.isNotBlank()
+    val isVisionReady: Boolean get() = isReady && visionModel.isNotBlank()
 }
 
 data class CoachMessage(
