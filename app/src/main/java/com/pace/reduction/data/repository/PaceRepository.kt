@@ -12,6 +12,7 @@ import com.pace.reduction.core.notifications.PaceNotifications
 import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.security.SecretVault
 import com.pace.reduction.data.db.CoachMessageEntity
+import com.pace.reduction.data.db.StepDayEntity
 import com.pace.reduction.data.seed.ProvisioningSeeder
 import com.pace.reduction.domain.model.AiSettings
 import com.pace.reduction.domain.model.CoachMessage
@@ -29,6 +30,7 @@ import com.pace.reduction.data.backup.PaceBackup
 import com.pace.reduction.data.backup.PaceBackupValidator
 import com.pace.reduction.data.backup.PlanBackup
 import com.pace.reduction.data.backup.SnapshotBackup
+import com.pace.reduction.data.backup.StepDayBackup
 import com.pace.reduction.data.backup.UrgeBackup
 import com.pace.reduction.domain.model.AccentPalette
 import com.pace.reduction.domain.model.ActivePause
@@ -52,6 +54,7 @@ import com.pace.reduction.domain.CoachContext
 import com.pace.reduction.domain.DailyProgress
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.QuitProgress
+import com.pace.reduction.domain.StepCalculator
 import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.WidgetTapGuard
 import com.pace.reduction.proto.AccentPaletteProto
@@ -135,6 +138,8 @@ class PaceRepository(
             checkupIntervalMinutes = preferences.ollamaCheckupIntervalMinutes.takeIf { it > 0 } ?: 180,
         )
     }
+
+    val stepDays: Flow<List<StepDayEntity>> = dao.observeStepDays()
 
     val coachMessages: Flow<List<CoachMessage>> = dao.observeCoachMessages().map { messages ->
         messages.map { it.toDomain() }
@@ -810,6 +815,7 @@ class PaceRepository(
             externalBreaks = dao.allExternalBreaks().map {
                 ExternalBreakBackup(it.id, it.gameId, it.startedAtEpochMs, it.returnedAtEpochMs, it.urgeSessionId)
             },
+            stepDays = dao.allStepDays().map { StepDayBackup(it.localDate, it.steps, it.updatedAtEpochMs) },
         )
         return backupJson.encodeToString(PaceBackup.serializer(), backup)
     }
@@ -826,6 +832,7 @@ class PaceRepository(
             dao.deleteAllPersonalRecords()
             dao.deleteAllExternalBreaks()
             dao.deleteAllCoachMessages()
+            dao.deleteAllStepDays()
             backup.logs.forEach {
                 dao.insertLog(CigaretteLogEntity(it.id, it.occurredAtEpochMs, it.recordedAtEpochMs, "IMPORT", it.note, it.reversedAtEpochMs, it.reversalReason))
             }
@@ -849,6 +856,7 @@ class PaceRepository(
             backup.externalBreaks.forEach {
                 dao.upsertExternalBreak(ExternalBreakEntity(it.id, it.gameId, it.startedAtEpochMs, it.returnedAtEpochMs, it.urgeSessionId))
             }
+            backup.stepDays.forEach { dao.upsertStepDay(StepDayEntity(it.localDate, it.steps, it.updatedAtEpochMs)) }
         }
         preferencesStore.updateData { current ->
             current.withPlan(backup.plan.toDomain()).toBuilder()
@@ -861,6 +869,48 @@ class PaceRepository(
                 .build()
         }
         refreshWidgetSnapshot()
+    }
+
+    /**
+     * Folds one raw pedometer reading into today's total.
+     *
+     * The sensor counts from boot, so what matters is the movement since the last reading; the
+     * anchor holding that previous value lives in preferences beside the plan rather than in the
+     * step table, because it describes the sensor rather than any particular day.
+     *
+     * A delta that arrives after midnight lands entirely on the day it was read. Splitting it
+     * across the boundary would need a timestamp per step, which the counter does not provide.
+     */
+    suspend fun recordStepReading(raw: Long) {
+        val plan = settings.first()
+        if (!plan.stepCountingEnabled) return
+        val preferences = preferencesStore.data.first()
+        val anchor = if (preferences.stepCounterAnchorSet) preferences.stepCounterAnchor else null
+        val delta = StepCalculator.deltaFor(anchor, raw)
+        val now = clock.millis()
+        if (delta > 0) {
+            val date = clock.instant().atZone(zoneProvider()).toLocalDate().toString()
+            dao.addSteps(localDate = date, delta = delta, updatedAtEpochMs = now)
+        }
+        preferencesStore.updateData { current ->
+            current.toBuilder()
+                .setStepCounterAnchor(raw)
+                .setStepCounterAnchorSet(true)
+                .build()
+        }
+    }
+
+    /**
+     * Forgets where the counter was, so the next reading establishes a fresh baseline instead of
+     * booking every step taken while the feature was off as one enormous delta.
+     */
+    suspend fun clearStepAnchor() {
+        preferencesStore.updateData { current ->
+            current.toBuilder()
+                .clearStepCounterAnchor()
+                .setStepCounterAnchorSet(false)
+                .build()
+        }
     }
 
     suspend fun isQuietHoursNow(): Boolean {
@@ -1198,6 +1248,8 @@ class PaceRepository(
         .setPersonalReason(plan.personalReason.take(500))
         .setRewardName(plan.rewardName.take(100))
         .setRewardTarget(plan.rewardTarget.coerceAtLeast(0.0))
+        .setStepCountingEnabled(plan.stepCountingEnabled)
+        .setHeightCentimetres(if (plan.heightCentimetres in 100..250) plan.heightCentimetres else 0)
         .setCoachingTone(plan.coachingTone.toProto())
         .setReminderIntensity(plan.reminderIntensity.toProto())
         .setNotificationPrivate(plan.notificationPrivate)
@@ -1273,6 +1325,8 @@ class PaceRepository(
         currencyCode = proto.currencyCode.ifBlank { "DKK" },
         personalReason = proto.personalReason,
         rewardName = proto.rewardName,
+        stepCountingEnabled = proto.stepCountingEnabled,
+        heightCentimetres = proto.heightCentimetres,
         rewardTarget = proto.rewardTarget,
         coachingTone = when (proto.coachingTone) {
             CoachingToneProto.COACHING_TONE_DIRECT -> CoachingTone.DIRECT

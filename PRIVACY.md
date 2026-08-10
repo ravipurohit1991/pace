@@ -14,6 +14,10 @@ Cigarette and reversal records, daily plan snapshots, toolkit sessions, achievem
 - **Web content:** external games and reference sources open only from a fixed HTTPS allowlist in a browser Custom Tab. Those sites have their own privacy practices.
 - **Trusted support:** sharing a message hands the action to a user-selected Android app. Pace does not request contacts, phone-call, or SMS permissions.
 
+Step counting is optional and off by default. When enabled it asks for activity recognition, reads
+the device's own step counter, and stores daily totals locally like every other figure — step data
+is never sent anywhere, including to the AI coach. Turning it off stops all sampling.
+
 Notifications, vibration, and microphone access are optional. The microphone is requested only when the user starts a voice call. Photo selection uses Android's permissionless picker, and taking a photo delegates to the user's camera app without granting Pace general camera access. Pace never requests location, contacts, broad storage access, phone-call permissions, or SMS permissions. Permission denial leaves the core app usable. Notification details can be hidden on the lock screen, and all coaching notifications are suppressed and cleared during configured rest hours.
 
 Choosing **Delete all Pace data** removes the local database and settings, including the stored API key and coach conversations, cancels Pace-tagged scheduled work and notifications, and clears widget state. Copies previously exported by the user are outside the app and must be deleted from their selected storage separately.

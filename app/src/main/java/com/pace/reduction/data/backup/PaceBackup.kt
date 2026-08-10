@@ -12,6 +12,15 @@ data class PaceBackup(
     val dailySnapshots: List<SnapshotBackup>,
     val achievements: List<AchievementBackup>,
     val externalBreaks: List<ExternalBreakBackup>,
+    /** Defaulted so backups written before step counting existed still import. */
+    val stepDays: List<StepDayBackup> = emptyList(),
+)
+
+@Serializable
+data class StepDayBackup(
+    val localDate: String,
+    val steps: Long,
+    val updatedAtEpochMs: Long,
 )
 
 @Serializable

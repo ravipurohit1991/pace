@@ -97,6 +97,10 @@ data class PlanSettings(
     val highUrgeWindowEnabled: Boolean = false,
     val highUrgeStartMinutes: Int = 15 * 60,
     val highUrgeEndMinutes: Int = 18 * 60,
+    /** Opt-in; nothing is sampled from the pedometer until the user turns this on. */
+    val stepCountingEnabled: Boolean = false,
+    /** Used only to derive stride length for the distance figure. 0 means "not stated". */
+    val heightCentimetres: Int = 0,
 )
 
 /** Ollama Cloud coach configuration. The key is held encrypted at rest. */

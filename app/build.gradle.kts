@@ -102,6 +102,14 @@ ksp {
     arg("room.generateKotlin", "true")
 }
 
+// MigrationTestHelper reads the exported schemas at runtime, so they have to travel inside the
+// test APK rather than only existing in the source tree.
+androidComponents {
+    onVariants { variant ->
+        variant.androidTest?.sources?.assets?.addStaticSourceDirectory("$projectDir/schemas")
+    }
+}
+
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"

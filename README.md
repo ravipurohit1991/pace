@@ -108,6 +108,18 @@ Twelve recovery milestones on the published CDC/NHS timeline, from *heart rate s
 whole ladder. Alongside it: cigarettes avoided against your baseline, money saved, life regained at
 11 minutes per cigarette, and your best zero-cigarette run.
 
+### Count what you did instead
+
+Optional step counting, off until you turn it on in **Progress → Walking**. Steps today, distance,
+7- and 30-day averages, a per-day chart and your best day so far. Distance is estimated from your
+stride, which is derived from the height you can set in **Plan** — it is an estimate, and the app
+says so rather than presenting it as measured.
+
+It reads the phone's own pedometer, which the sensor hub maintains whether or not anything is
+listening. Pace samples it when you open the app and every few hours in the background, so there is
+no foreground service, no persistent notification, and no wakelock. Averages count only the days
+actually recorded, so leaving your phone at home does not show up as a decline in walking.
+
 ### An offline toolkit
 
 5-4-3-2-1 grounding, a scene-change reset, sequence and memory games, a share-sheet message to a trusted

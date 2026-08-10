@@ -67,6 +67,20 @@ data class ExternalBreakEntity(
     val urgeSessionId: String?,
 )
 
+/**
+ * One row per local day of walking.
+ *
+ * Stored as a running total rather than as individual readings: the platform's step counter is
+ * cumulative since boot and is sampled opportunistically, so what the app actually learns each time
+ * is "this many more steps since I last looked". Accumulating that into the day is the whole record.
+ */
+@Entity(tableName = "step_days")
+data class StepDayEntity(
+    @PrimaryKey val localDate: String,
+    val steps: Long,
+    val updatedAtEpochMs: Long,
+)
+
 @Entity(tableName = "coach_messages")
 data class CoachMessageEntity(
     @PrimaryKey val id: String,

@@ -14,14 +14,27 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PersonalRecordEntity::class,
         ExternalBreakEntity::class,
         CoachMessageEntity::class,
+        StepDayEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class PaceDatabase : RoomDatabase() {
     abstract fun paceDao(): PaceDao
 
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `step_days` (" +
+                        "`localDate` TEXT NOT NULL, " +
+                        "`steps` INTEGER NOT NULL, " +
+                        "`updatedAtEpochMs` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`localDate`))",
+                )
+            }
+        }
+
         /** Location trigger places were removed; the table goes with them. */
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {

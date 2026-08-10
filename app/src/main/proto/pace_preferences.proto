@@ -131,6 +131,15 @@ message PacePreferences {
   // Retained for migration; the app now stores one multimodal model in both fields.
   string ollama_vision_model = 72;
   string ollama_image_system_prompt = 73;
+
+  // Step counting. The hardware counter is cumulative since boot, so the last raw value read is
+  // kept here to turn the next reading into a delta. `set` is separate because a raw value of 0 is
+  // legitimate on a freshly booted device and must not be mistaken for "never read".
+  int64 step_counter_anchor = 74;
+  bool step_counter_anchor_set = 75;
+  // Stride length is derived from this; 0 means "not stated" and falls back to the default.
+  int32 height_centimetres = 76;
+  bool step_counting_enabled = 77;
 }
 
 enum WidgetStateProto {

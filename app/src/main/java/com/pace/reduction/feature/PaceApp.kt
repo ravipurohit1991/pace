@@ -90,6 +90,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.activity.compose.LocalActivity
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -196,6 +198,16 @@ fun PaceApp(viewModel: PaceViewModel) {
                 PaceEvent.HistoryUpdated -> snackbarHostState.showSnackbar(historyUpdatedMessage)
                 PaceEvent.HistoryRejected -> snackbarHostState.showSnackbar(historyRejectedMessage)
             }
+        }
+    }
+
+    // The pedometer keeps counting whether or not the app is watching, so one reading each time
+    // the app is resumed picks up everything walked since the last look.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, uiState.settings.stepCountingEnabled) {
+        if (!uiState.settings.stepCountingEnabled) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.sampleSteps()
         }
     }
 
@@ -373,7 +385,11 @@ private fun MainShell(
                     )
                 }
                 entry<ProgressDestination> {
-                    ProgressScreen(uiState, onOpenSettings = { backStack.add(SettingsDestination) })
+                    ProgressScreen(
+                        uiState = uiState,
+                        onOpenSettings = { backStack.add(SettingsDestination) },
+                        onToggleSteps = viewModel::setStepCounting,
+                    )
                 }
                 entry<SettingsDestination> {
                     SettingsScreen(
@@ -477,6 +493,12 @@ private fun TodayScreen(
                         add(
                             String.format(locale, "%.0f", quit.moneySaved) to
                                 stringResource(R.string.quit_saved),
+                        )
+                    }
+                    if (uiState.steps.enabled && uiState.steps.permissionGranted) {
+                        add(
+                            formatStepsCompact(uiState.steps.todaySteps, locale) to
+                                stringResource(R.string.steps_today),
                         )
                     }
                 }
@@ -801,6 +823,9 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
     var highUrgeEnabled by rememberSaveable(settings.highUrgeWindowEnabled) { mutableStateOf(settings.highUrgeWindowEnabled) }
     var highUrgeStart by rememberSaveable(settings.highUrgeStartMinutes) { mutableStateOf(formatMinutes(settings.highUrgeStartMinutes)) }
     var highUrgeEnd by rememberSaveable(settings.highUrgeEndMinutes) { mutableStateOf(formatMinutes(settings.highUrgeEndMinutes)) }
+    var height by rememberSaveable(settings.heightCentimetres) {
+        mutableStateOf(settings.heightCentimetres.takeIf { it > 0 }?.toString() ?: "")
+    }
 
     val newCeiling = ceiling.toIntOrNull()
     val parsedWake = parseTime(wake)
@@ -821,7 +846,8 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                     adaptiveMax.toIntOrNull() in 30..720
                 )
             ) &&
-        (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null))
+        (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null)) &&
+        (height.isBlank() || height.toIntOrNull() in 100..250)
 
     PaceScreen(
         title = stringResource(R.string.plan_title),
@@ -868,6 +894,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                                 highUrgeWindowEnabled = highUrgeEnabled,
                                 highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
                                 highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
+                                heightCentimetres = height.toIntOrNull()?.takeIf { it in 100..250 } ?: 0,
                             ),
                         )
                     },
@@ -973,6 +1000,11 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
             }
         }
         item { PlanNumberField(R.string.morning_hold_label, morningHold, { morningHold = it }, 0..240) }
+        item {
+            // Only ever used to turn steps into a distance, which is why it lives here rather than
+            // in a "profile" the app otherwise has no use for.
+            PlanNumberField(R.string.height_label, height, { height = it }, 100..250)
+        }
         item {
             SectionCard {
                 Row(
@@ -1159,7 +1191,11 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
 }
 
 @Composable
-private fun ProgressScreen(uiState: PaceUiState, onOpenSettings: () -> Unit) {
+private fun ProgressScreen(
+    uiState: PaceUiState,
+    onOpenSettings: () -> Unit,
+    onToggleSteps: (Boolean) -> Unit,
+) {
     val metrics = requireNotNull(uiState.progress)
     val quit = uiState.quit
     val locale = LocalConfiguration.current.locales[0]
@@ -1232,6 +1268,13 @@ private fun ProgressScreen(uiState: PaceUiState, onOpenSettings: () -> Unit) {
                     )
                 }
             }
+        }
+        item {
+            StepSection(
+                steps = uiState.steps,
+                rangeDays = rangeDays,
+                onToggle = onToggleSteps,
+            )
         }
         if (quit != null) {
             item {
