@@ -15,7 +15,11 @@ class AppContainer(context: Context) {
         appContext,
         PaceDatabase::class.java,
         "pace.db",
-    ).addMigrations(PaceDatabase.MIGRATION_1_2, PaceDatabase.MIGRATION_2_3).build()
+    ).addMigrations(
+        PaceDatabase.MIGRATION_1_2,
+        PaceDatabase.MIGRATION_2_3,
+        PaceDatabase.MIGRATION_3_4,
+    ).build()
 
     val repository = PaceRepository(
         context = appContext,

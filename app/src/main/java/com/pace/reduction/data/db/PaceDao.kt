@@ -119,4 +119,30 @@ interface PaceDao {
 
     @Query("DELETE FROM coach_messages")
     suspend fun deleteAllCoachMessages()
+
+    @Query("SELECT * FROM step_days ORDER BY localDate ASC")
+    fun observeStepDays(): Flow<List<StepDayEntity>>
+
+    @Query("SELECT * FROM step_days ORDER BY localDate ASC")
+    suspend fun allStepDays(): List<StepDayEntity>
+
+    /**
+     * Adds [delta] to a day, creating the row if this is the day's first reading.
+     *
+     * Done as one upsert rather than read-modify-write so two samples racing — the foreground
+     * sampler and the periodic worker can land together — cannot lose steps between them.
+     */
+    @Query(
+        "INSERT INTO step_days (localDate, steps, updatedAtEpochMs) " +
+            "VALUES (:localDate, :delta, :updatedAtEpochMs) " +
+            "ON CONFLICT(localDate) DO UPDATE SET " +
+            "steps = steps + :delta, updatedAtEpochMs = :updatedAtEpochMs",
+    )
+    suspend fun addSteps(localDate: String, delta: Long, updatedAtEpochMs: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStepDay(day: StepDayEntity)
+
+    @Query("DELETE FROM step_days")
+    suspend fun deleteAllStepDays()
 }

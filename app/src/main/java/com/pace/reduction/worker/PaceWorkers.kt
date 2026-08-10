@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.pace.reduction.PaceApplication
+import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.core.notifications.PaceNotifications
 import java.time.Duration
 import java.time.ZonedDateTime
@@ -21,6 +22,20 @@ private fun Context.coachService() = (applicationContext as PaceApplication).con
 class DailyRolloverWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = runCatching {
         applicationContext.repository().refreshWidgetSnapshot()
+    }.fold({ Result.success() }, { Result.retry() })
+}
+
+/**
+ * Samples the pedometer on a schedule as well as on app resume.
+ *
+ * Without this, a day the user never opened the app would have its steps credited to whenever they
+ * next did — the counter is cumulative, so the delta would arrive intact but land on the wrong day.
+ * Reading a few times a day keeps each day's total roughly where it belongs.
+ */
+class StepSampleWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result = runCatching {
+        val raw = StepSensor(applicationContext).readCounter()
+        if (raw != null) applicationContext.repository().recordStepReading(raw)
     }.fold({ Result.success() }, { Result.retry() })
 }
 
@@ -112,6 +127,11 @@ object PaceWorkScheduler {
             "pace-coaching-eligibility",
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<CoachingEligibilityWorker>(3, TimeUnit.HOURS).addTag(TAG).build(),
+        )
+        workManager.enqueueUniquePeriodicWork(
+            "pace-step-sample",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<StepSampleWorker>(4, TimeUnit.HOURS).addTag(TAG).build(),
         )
         workManager.enqueueUniquePeriodicWork(
             "pace-weekly-review",

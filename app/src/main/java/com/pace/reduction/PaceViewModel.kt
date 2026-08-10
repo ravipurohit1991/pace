@@ -16,7 +16,11 @@ import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.ProgressMetrics
 import com.pace.reduction.domain.AdaptiveSpacing
 import com.pace.reduction.domain.QuitMetrics
+import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.domain.QuitProgress
+import com.pace.reduction.domain.StepCalculator
+import com.pace.reduction.domain.StepDay
+import com.pace.reduction.domain.StepMetrics
 import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
@@ -68,6 +72,7 @@ data class PaceUiState(
     val widget: WidgetSettings = WidgetSettings(),
     val ai: AiSettings = AiSettings(),
     val coachMessages: List<CoachMessage> = emptyList(),
+    val steps: StepMetrics = StepMetrics(),
     val now: Instant = Instant.now(),
     val loading: Boolean = true,
 )
@@ -138,6 +143,8 @@ class PaceViewModel(
         viewModelScope.launch(Dispatchers.IO) { purgeCoachImageCache() }
     }
 
+    private val stepSensor = StepSensor(application)
+
     private val _coachState = MutableStateFlow(CoachUiState())
     val coachState: StateFlow<CoachUiState> = _coachState.asStateFlow()
     private var coachJob: Job? = null
@@ -202,7 +209,8 @@ class PaceViewModel(
         repository.achievements,
         repository.activePause,
         aiState,
-    ) { core, achievements, activePause, ai ->
+        repository.stepDays,
+    ) { core, achievements, activePause, ai, stepDays ->
         val zone = ZoneId.systemDefault()
         val progress = ProgressCalculator.calculate(
             today = core.now.atZone(zone).toLocalDate(),
@@ -231,6 +239,20 @@ class PaceViewModel(
             cigarettesPerPack = core.settings.cigarettesPerPack,
             quitDate = core.settings.quitDate,
         )
+        val steps = StepCalculator.calculate(
+            today = core.now.atZone(zone).toLocalDate(),
+            days = stepDays.map { day ->
+                val count = day.steps
+                StepDay(
+                    date = LocalDate.parse(day.localDate),
+                    steps = count,
+                    distanceKm = StepCalculator.distanceKm(count, core.settings.heightCentimetres),
+                )
+            },
+            available = stepSensor.isAvailable,
+            permissionGranted = stepSensor.hasPermission,
+            enabled = core.settings.stepCountingEnabled,
+        )
         PaceUiState(
             settings = core.settings,
             today = today,
@@ -246,6 +268,7 @@ class PaceViewModel(
             widget = core.widget,
             ai = ai.settings,
             coachMessages = ai.messages,
+            steps = steps,
             now = core.now,
             loading = false,
         )
@@ -254,6 +277,35 @@ class PaceViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = PaceUiState(),
     )
+
+    /**
+     * Takes one reading from the pedometer and folds it into today.
+     *
+     * Called when the app comes to the foreground and from the periodic worker. The hardware keeps
+     * counting regardless, so sampling at those two moments recovers everything walked in between
+     * without the app having to stay awake watching.
+     */
+    fun sampleSteps() {
+        viewModelScope.launch {
+            val raw = stepSensor.readCounter() ?: return@launch
+            repository.recordStepReading(raw)
+        }
+    }
+
+    /**
+     * Turns step counting on or off.
+     *
+     * Enabling drops the stored anchor first: the counter has been running since boot whether or
+     * not the app was watching, and without a fresh baseline the first reading would book every one
+     * of those steps as if they had just been taken.
+     */
+    fun setStepCounting(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) repository.clearStepAnchor()
+            repository.updatePlan(uiState.value.settings.copy(stepCountingEnabled = enabled))
+            if (enabled) sampleSteps()
+        }
+    }
 
     fun completeOnboarding(plan: PlanSettings) {
         viewModelScope.launch {
