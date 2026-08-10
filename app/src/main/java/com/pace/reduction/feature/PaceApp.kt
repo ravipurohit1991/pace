@@ -19,12 +19,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -36,8 +36,10 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -59,7 +61,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,7 +85,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalConfiguration
@@ -302,7 +305,9 @@ private fun MainShell(
     ) { innerPadding ->
         NavDisplay(
             backStack = backStack,
-            modifier = Modifier.padding(innerPadding),
+            // Consuming as well as applying matters: without it every inner top app bar reads the
+            // status-bar inset a second time and the titles sit a bar's height too low.
+            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding),
             onBack = {
                 if (backStack.size > 1) backStack.removeLastOrNull()
             },
@@ -357,9 +362,19 @@ private fun MainShell(
                         onBack = { backStack.removeLastOrNull() },
                     )
                 }
-                entry<PlanDestination> { PlanScreen(uiState, onSavePlan) }
-                entry<ToolkitDestination> { EnhancedToolkitScreen(uiState, viewModel) }
-                entry<ProgressDestination> { ProgressScreen(uiState) }
+                entry<PlanDestination> {
+                    PlanScreen(uiState, onSavePlan, onBack = { backStack.removeLastOrNull() })
+                }
+                entry<ToolkitDestination> {
+                    EnhancedToolkitScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onOpenSettings = { backStack.add(SettingsDestination) },
+                    )
+                }
+                entry<ProgressDestination> {
+                    ProgressScreen(uiState, onOpenSettings = { backStack.add(SettingsDestination) })
+                }
                 entry<SettingsDestination> {
                     SettingsScreen(
                         uiState = uiState,
@@ -414,33 +429,19 @@ private fun TodayScreen(
         CoachingTone.TOUGH -> stringResource(R.string.coaching_tough)
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    PaceScreen(
+        title = stringResource(R.string.today_title),
+        subtitle = today.localDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
+        actions = {
+            IconButton(onClick = onOpenPlan) {
+                Icon(Icons.Outlined.CalendarMonth, contentDescription = stringResource(R.string.plan_title))
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
+            }
+        },
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
     ) {
-        item {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            today.localDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(stringResource(R.string.today_title))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onOpenPlan) {
-                        Icon(Icons.Outlined.CalendarMonth, contentDescription = stringResource(R.string.plan_title))
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
-                    }
-                },
-            )
-        }
         item {
             Box(Modifier.entrance(0)) {
                 if (resting) RestHero() else PacingHero(uiState)
@@ -448,7 +449,7 @@ private fun TodayScreen(
         }
         if (!resting) item {
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp).entrance(1),
+                modifier = Modifier.entrance(1),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 LogButton(onLog = onLog, hapticsEnabled = uiState.settings.hapticsEnabled)
@@ -468,40 +469,25 @@ private fun TodayScreen(
         }
         if (quit != null && !resting) {
             item {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp).entrance(2),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    StatTile(
-                        value = formatSmokeFree(quit.smokeFreeDuration),
-                        label = stringResource(R.string.quit_smoke_free),
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatTile(
-                        value = quit.cigarettesAvoided.toString(),
-                        label = stringResource(R.string.quit_avoided),
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatTile(
-                        value = formatLifeRegained(quit.minutesOfLifeRegained),
-                        label = stringResource(R.string.quit_life),
-                        modifier = Modifier.weight(1f),
-                    )
+                val stats = buildList {
+                    add(formatSmokeFree(quit.smokeFreeDuration) to stringResource(R.string.quit_smoke_free))
+                    add(quit.cigarettesAvoided.toString() to stringResource(R.string.quit_avoided))
+                    add(formatLifeRegained(quit.minutesOfLifeRegained) to stringResource(R.string.quit_life))
                     if (uiState.settings.pricePerPack > 0) {
-                        StatTile(
-                            value = String.format(locale, "%.0f", quit.moneySaved),
-                            label = stringResource(R.string.quit_saved),
-                            modifier = Modifier.weight(1f),
+                        add(
+                            String.format(locale, "%.0f", quit.moneySaved) to
+                                stringResource(R.string.quit_saved),
                         )
                     }
                 }
+                StatGrid(stats, modifier = Modifier.entrance(2))
             }
             item {
-                NextMilestoneCard(quit, modifier = Modifier.padding(horizontal = 20.dp).entrance(3))
+                NextMilestoneCard(quit, modifier = Modifier.entrance(3))
             }
         }
         if (!resting) item {
-            SectionCard(modifier = Modifier.padding(horizontal = 20.dp).entrance(4)) {
+            SectionCard(modifier = Modifier.entrance(4)) {
                 Text(coachingMessage, style = MaterialTheme.typography.titleMedium)
                 if (uiState.settings.personalReason.isNotBlank()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
@@ -512,7 +498,7 @@ private fun TodayScreen(
         }
         if (widgetInstalled == false) {
             item {
-                SectionCard(modifier = Modifier.padding(horizontal = 20.dp)) {
+                SectionCard {
                     Text(stringResource(R.string.add_widget_title), style = MaterialTheme.typography.titleMedium)
                     Text(
                         stringResource(R.string.add_widget_body),
@@ -542,7 +528,7 @@ private fun TodayScreen(
 @Composable
 private fun RestHero() {
     Card(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
         Column(
@@ -700,7 +686,7 @@ private fun PacingHero(uiState: PaceUiState) {
     val animatedWash by animateColorAsState(wash, motion.eased(500), label = "heroWash")
 
     Card(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
@@ -784,7 +770,7 @@ private fun waitProgress(now: java.time.Instant, target: java.time.Instant, span
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit) {
+private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit, onBack: () -> Unit) {
     val settings = uiState.settings
     var baseline by rememberSaveable(settings.baselinePerDay) { mutableStateOf(settings.baselinePerDay.toString()) }
     var ceiling by rememberSaveable(settings.dailyCeiling) { mutableStateOf(settings.dailyCeiling.toString()) }
@@ -837,19 +823,64 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
             ) &&
         (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null))
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    PaceScreen(
+        title = stringResource(R.string.plan_title),
+        onBack = onBack,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        // Applying the plan is the point of the screen, so the button that does it no longer sits
+        // below fifteen fields of scroll where it cannot be found without hunting.
+        bottomBar = {
+            StickyActionBar {
+                Button(
+                    onClick = {
+                        onSavePlan(
+                            settings.copy(
+                                baselinePerDay = baseline.toInt(),
+                                dailyCeiling = ceiling.toInt(),
+                                minimumGapMinutes = gap.toInt(),
+                                wakeMinutes = requireNotNull(parsedWake),
+                                sleepMinutes = requireNotNull(parsedSleep),
+                                morningHoldMinutes = morningHold.toInt(),
+                                weekendWakeEnabled = weekendWakeEnabled,
+                                weekendWakeMinutes = parsedWeekendWake ?: settings.weekendWakeMinutes,
+                                flexibleDay = flexibleDay,
+                                reductionStep = reductionStep.toInt(),
+                                reviewIntervalDays = reviewInterval.toInt(),
+                                pricePerPack = pricePerPack.toDoubleOrNull() ?: 0.0,
+                                cigarettesPerPack = cigarettesPerPack.toInt(),
+                                currencyCode = currencyCode,
+                                coachingTone = tone,
+                                reminderIntensity = reminder,
+                                hapticsEnabled = hapticsEnabled,
+                                personalReason = personalReason,
+                                rewardName = rewardName,
+                                rewardTarget = rewardTarget.toDoubleOrNull() ?: 0.0,
+                                quitMode = quitMode,
+                                quitDate = parsedQuitDate,
+                                adaptiveSpacingEnabled = adaptiveSpacing,
+                                adaptiveSpacingStepMinutes = adaptiveStep.toIntOrNull()
+                                    ?: settings.adaptiveSpacingStepMinutes,
+                                adaptiveSpacingIntervalDays = adaptiveInterval.toIntOrNull()
+                                    ?: settings.adaptiveSpacingIntervalDays,
+                                adaptiveSpacingMaxMinutes = adaptiveMax.toIntOrNull()
+                                    ?: settings.adaptiveSpacingMaxMinutes,
+                                highUrgeWindowEnabled = highUrgeEnabled,
+                                highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
+                                highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
+                            ),
+                        )
+                    },
+                    enabled = valid,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) {
+                    Text(stringResource(R.string.preview_and_apply))
+                }
+            }
+        },
     ) {
-        item {
-            Text(stringResource(R.string.plan_title), style = MaterialTheme.typography.headlineMedium)
-            Text(
-                stringResource(R.string.plan_intro),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        item { LeadParagraph(stringResource(R.string.plan_intro)) }
+        item { SectionHeader(stringResource(R.string.plan_section_limits)) }
         item { PlanNumberField(R.string.baseline_label, baseline, { baseline = it }, 1..100) }
         item { PlanNumberField(R.string.ceiling_label, ceiling, { ceiling = it }, 0..100) }
         if (newCeiling != null && newCeiling < (uiState.today?.count ?: 0)) {
@@ -865,7 +896,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
         item { PlanNumberField(R.string.spacing_label, gap, { gap = it }, 15..360) }
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text(
                             stringResource(R.string.adaptive_spacing_title),
@@ -907,15 +941,19 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 }
             }
         }
+        item { SectionHeader(stringResource(R.string.plan_section_day)) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TimeField(R.string.wake_label, wake, { wake = it }, Modifier.weight(1f))
-                TimeField(R.string.sleep_label, sleep, { sleep = it }, Modifier.weight(1f))
+                ClockField(R.string.wake_label, wake, { wake = it }, Modifier.weight(1f))
+                ClockField(R.string.sleep_label, sleep, { sleep = it }, Modifier.weight(1f))
             }
         }
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.high_urge_title), style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -928,8 +966,8 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 }
                 if (highUrgeEnabled) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TimeField(R.string.high_urge_from, highUrgeStart, { highUrgeStart = it }, Modifier.weight(1f))
-                        TimeField(R.string.high_urge_to, highUrgeEnd, { highUrgeEnd = it }, Modifier.weight(1f))
+                        ClockField(R.string.high_urge_from, highUrgeStart, { highUrgeStart = it }, Modifier.weight(1f))
+                        ClockField(R.string.high_urge_to, highUrgeEnd, { highUrgeEnd = it }, Modifier.weight(1f))
                     }
                 }
             }
@@ -937,7 +975,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
         item { PlanNumberField(R.string.morning_hold_label, morningHold, { morningHold = it }, 0..240) }
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.quit_mode_title), style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -962,7 +1003,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
         }
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.weekend_wake), style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -974,13 +1018,16 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                     Switch(checked = weekendWakeEnabled, onCheckedChange = { weekendWakeEnabled = it })
                 }
                 if (weekendWakeEnabled) {
-                    TimeField(R.string.weekend_wake_time, weekendWake, { weekendWake = it }, Modifier.fillMaxWidth())
+                    ClockField(R.string.weekend_wake_time, weekendWake, { weekendWake = it }, Modifier.fillMaxWidth())
                 }
             }
         }
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.flexible_day), style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -993,28 +1040,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 }
             }
         }
-        item {
-            Text(stringResource(R.string.coaching_voice), style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CoachingTone.entries.forEach { option ->
-                    FilterChip(
-                        selected = tone == option,
-                        onClick = { tone = option },
-                        label = {
-                            Text(
-                                stringResource(
-                                    when (option) {
-                                        CoachingTone.SUPPORTIVE -> R.string.voice_supportive
-                                        CoachingTone.DIRECT -> R.string.voice_direct
-                                        CoachingTone.TOUGH -> R.string.voice_tough
-                                    },
-                                ),
-                            )
-                        },
-                    )
-                }
-            }
-        }
+        item { SectionHeader(stringResource(R.string.plan_section_reduction)) }
         item {
             SectionCard {
                 Text(stringResource(R.string.reduction_review_title), style = MaterialTheme.typography.titleMedium)
@@ -1027,6 +1053,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 PlanNumberField(R.string.review_interval_label, reviewInterval, { reviewInterval = it }, 7..28)
             }
         }
+        item { SectionHeader(stringResource(R.string.plan_section_money)) }
         item {
             SectionCard {
                 Text(stringResource(R.string.savings_settings_title), style = MaterialTheme.typography.titleMedium)
@@ -1047,6 +1074,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 )
             }
         }
+        item { SectionHeader(stringResource(R.string.plan_section_motivation)) }
         item {
             OutlinedTextField(
                 value = personalReason,
@@ -1055,6 +1083,30 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 label = { Text(stringResource(R.string.personal_reason_label)) },
                 minLines = 2,
             )
+        }
+        item {
+            SectionCard {
+                Text(stringResource(R.string.coaching_voice), style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoachingTone.entries.forEach { option ->
+                        FilterChip(
+                            selected = tone == option,
+                            onClick = { tone = option },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (option) {
+                                            CoachingTone.SUPPORTIVE -> R.string.voice_supportive
+                                            CoachingTone.DIRECT -> R.string.voice_direct
+                                            CoachingTone.TOUGH -> R.string.voice_tough
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
         }
         item {
             SectionCard {
@@ -1074,9 +1126,10 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 )
             }
         }
+        item { SectionHeader(stringResource(R.string.plan_section_reminders)) }
         item {
             SectionCard {
-                Text(stringResource(R.string.reminder_intensity), style = MaterialTheme.typography.titleMedium)
+                // No inner title here: the section header directly above already says "Reminders".
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReminderIntensity.entries.forEach { option ->
                         FilterChip(
@@ -1102,54 +1155,11 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit)
                 }
             }
         }
-        item {
-            Button(
-                onClick = {
-                    onSavePlan(
-                        settings.copy(
-                            baselinePerDay = baseline.toInt(),
-                            dailyCeiling = ceiling.toInt(),
-                            minimumGapMinutes = gap.toInt(),
-                            wakeMinutes = requireNotNull(parsedWake),
-                            sleepMinutes = requireNotNull(parsedSleep),
-                            morningHoldMinutes = morningHold.toInt(),
-                            weekendWakeEnabled = weekendWakeEnabled,
-                            weekendWakeMinutes = parsedWeekendWake ?: settings.weekendWakeMinutes,
-                            flexibleDay = flexibleDay,
-                            reductionStep = reductionStep.toInt(),
-                            reviewIntervalDays = reviewInterval.toInt(),
-                            pricePerPack = pricePerPack.toDoubleOrNull() ?: 0.0,
-                            cigarettesPerPack = cigarettesPerPack.toInt(),
-                            currencyCode = currencyCode,
-                            coachingTone = tone,
-                            reminderIntensity = reminder,
-                            hapticsEnabled = hapticsEnabled,
-                            personalReason = personalReason,
-                            rewardName = rewardName,
-                            rewardTarget = rewardTarget.toDoubleOrNull() ?: 0.0,
-                            quitMode = quitMode,
-                            quitDate = parsedQuitDate,
-                            adaptiveSpacingEnabled = adaptiveSpacing,
-                            adaptiveSpacingStepMinutes = adaptiveStep.toIntOrNull() ?: settings.adaptiveSpacingStepMinutes,
-                            adaptiveSpacingIntervalDays = adaptiveInterval.toIntOrNull() ?: settings.adaptiveSpacingIntervalDays,
-                            adaptiveSpacingMaxMinutes = adaptiveMax.toIntOrNull() ?: settings.adaptiveSpacingMaxMinutes,
-                            highUrgeWindowEnabled = highUrgeEnabled,
-                            highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
-                            highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
-                        ),
-                    )
-                },
-                enabled = valid,
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-            ) {
-                Text(stringResource(R.string.preview_and_apply))
-            }
-        }
     }
 }
 
 @Composable
-private fun ProgressScreen(uiState: PaceUiState) {
+private fun ProgressScreen(uiState: PaceUiState, onOpenSettings: () -> Unit) {
     val metrics = requireNotNull(uiState.progress)
     val quit = uiState.quit
     val locale = LocalConfiguration.current.locales[0]
@@ -1172,38 +1182,31 @@ private fun ProgressScreen(uiState: PaceUiState) {
         completedDays = metrics.days,
     )
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+    PaceScreen(
+        title = stringResource(R.string.progress_title),
+        actions = {
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
+            }
+        },
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Text(stringResource(R.string.progress_title), style = MaterialTheme.typography.headlineMedium)
-            Text(
-                stringResource(R.string.progress_intro),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        item { LeadParagraph(stringResource(R.string.progress_intro)) }
         if (quit != null) {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile(
-                        value = quit.zeroDayStreak.toString(),
-                        label = stringResource(R.string.quit_streak),
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatTile(
-                        value = metrics.avoidedCigarettes.toString(),
-                        label = stringResource(R.string.estimated_avoided),
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatTile(
-                        value = String.format(locale, "%.0f %s", metrics.estimatedSavings, uiState.settings.currencyCode),
-                        label = stringResource(R.string.estimated_savings),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                StatGrid(
+                    listOf(
+                        quit.zeroDayStreak.toString() to stringResource(R.string.quit_streak),
+                        metrics.avoidedCigarettes.toString() to stringResource(R.string.estimated_avoided),
+                        String.format(
+                            locale,
+                            "%.0f %s",
+                            metrics.estimatedSavings,
+                            uiState.settings.currencyCode,
+                        ) to stringResource(R.string.estimated_savings),
+                    ),
+                )
             }
         }
         item {
@@ -1384,19 +1387,6 @@ private fun PlanNumberField(
         isError = parsed != null && parsed !in range,
         supportingText = { Text(stringResource(R.string.allowed_range, range.first, range.last)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        singleLine = true,
-    )
-}
-
-@Composable
-private fun TimeField(label: Int, value: String, onValueChange: (String) -> Unit, modifier: Modifier) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = { if (it.length <= 5) onValueChange(it) },
-        modifier = modifier,
-        label = { Text(stringResource(label)) },
-        supportingText = { Text(stringResource(R.string.time_format)) },
-        isError = parseTime(value) == null,
         singleLine = true,
     )
 }

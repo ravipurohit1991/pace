@@ -12,11 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -37,7 +34,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -108,197 +104,188 @@ internal fun SettingsScreen(
     val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.settings_title)) },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
-                }
-            },
-        )
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // Appearance changes as you tap it, not on a later Save — a colour you have to commit
-            // to before seeing is a colour you cannot choose.
-            item { AppearanceSection(uiState.settings, viewModel::saveAppearance) }
-            item {
-                WidgetSection(
-                    widget = uiState.widget,
-                    accent = uiState.settings.accentPalette,
-                    dynamicColor = uiState.settings.dynamicColor,
-                    installed = widgetInstalled,
-                    onRequestPin = {
-                        scope.launch {
-                            GlanceAppWidgetManager(context).requestPinGlanceAppWidget(
-                                receiver = PaceWidgetReceiver::class.java,
-                                preview = PaceWidget(),
-                            )
-                        }
-                    },
-                    onChange = viewModel::saveWidgetSettings,
-                )
-            }
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.notifications_title), style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        stringResource(if (notificationsGranted) R.string.notifications_granted else R.string.notifications_not_granted),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ReminderIntensity.entries.forEach { option ->
-                            FilterChip(
-                                selected = reminder == option,
-                                onClick = { reminder = option },
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            when (option) {
-                                                ReminderIntensity.OFF -> R.string.reminder_off
-                                                ReminderIntensity.GENTLE -> R.string.reminder_gentle
-                                                ReminderIntensity.STANDARD -> R.string.reminder_standard
-                                            },
-                                        ),
-                                    )
-                                },
-                            )
-                        }
-                    }
-                    if (!notificationsGranted && !notificationEducation) {
-                        OutlinedButton(onClick = { notificationEducation = true }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Outlined.Notifications, contentDescription = null)
-                            Text(stringResource(R.string.explain_notifications))
-                        }
-                    } else if (!notificationsGranted) {
-                        Text(stringResource(R.string.notification_education_body))
-                        Button(
-                            onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(stringResource(R.string.enable_notifications)) }
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                            })
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.open_system_notification_settings)) }
-                    SettingSwitch(
-                        title = stringResource(R.string.haptics),
-                        body = stringResource(R.string.haptics_body),
-                        checked = haptics,
-                        onCheckedChange = { haptics = it },
-                    )
-                    SettingSwitch(
-                        title = stringResource(R.string.notification_private_title),
-                        body = stringResource(R.string.notification_private_body),
-                        checked = privateOnLockScreen,
-                        onCheckedChange = { privateOnLockScreen = it },
-                    )
-                }
-            }
-            item { AiCoachSection(uiState, viewModel) }
-            item {
-                Button(
-                    onClick = {
-                        onSave(
-                            uiState.settings.copy(
-                                reminderIntensity = reminder,
-                                hapticsEnabled = haptics,
-                                notificationPrivate = privateOnLockScreen,
-                            ),
+    PaceScreen(
+        title = stringResource(R.string.settings_title),
+        onBack = onBack,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // Appearance changes as you tap it, not on a later Save — a colour you have to commit
+        // to before seeing is a colour you cannot choose.
+        item { AppearanceSection(uiState.settings, viewModel::saveAppearance) }
+        item {
+            WidgetSection(
+                widget = uiState.widget,
+                accent = uiState.settings.accentPalette,
+                dynamicColor = uiState.settings.dynamicColor,
+                installed = widgetInstalled,
+                onRequestPin = {
+                    scope.launch {
+                        GlanceAppWidgetManager(context).requestPinGlanceAppWidget(
+                            receiver = PaceWidgetReceiver::class.java,
+                            preview = PaceWidget(),
                         )
+                    }
+                },
+                onChange = viewModel::saveWidgetSettings,
+            )
+        }
+        item {
+            SectionCard {
+                Text(stringResource(R.string.notifications_title), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(if (notificationsGranted) R.string.notifications_granted else R.string.notifications_not_granted),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReminderIntensity.entries.forEach { option ->
+                        FilterChip(
+                            selected = reminder == option,
+                            onClick = { reminder = option },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (option) {
+                                            ReminderIntensity.OFF -> R.string.reminder_off
+                                            ReminderIntensity.GENTLE -> R.string.reminder_gentle
+                                            ReminderIntensity.STANDARD -> R.string.reminder_standard
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+                if (!notificationsGranted && !notificationEducation) {
+                    OutlinedButton(onClick = { notificationEducation = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Notifications, contentDescription = null)
+                        Text(stringResource(R.string.explain_notifications))
+                    }
+                } else if (!notificationsGranted) {
+                    Text(stringResource(R.string.notification_education_body))
+                    Button(
+                        onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.enable_notifications)) }
+                }
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        })
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(stringResource(R.string.save_settings)) }
+                ) { Text(stringResource(R.string.open_system_notification_settings)) }
+                SettingSwitch(
+                    title = stringResource(R.string.haptics),
+                    body = stringResource(R.string.haptics_body),
+                    checked = haptics,
+                    onCheckedChange = { haptics = it },
+                )
+                SettingSwitch(
+                    title = stringResource(R.string.notification_private_title),
+                    body = stringResource(R.string.notification_private_body),
+                    checked = privateOnLockScreen,
+                    onCheckedChange = { privateOnLockScreen = it },
+                )
             }
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.history_open), style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        stringResource(R.string.history_open_body),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        }
+        item { AiCoachSection(uiState, viewModel) }
+        item {
+            Button(
+                onClick = {
+                    onSave(
+                        uiState.settings.copy(
+                            reminderIntensity = reminder,
+                            hapticsEnabled = haptics,
+                            notificationPrivate = privateOnLockScreen,
+                        ),
                     )
-                    OutlinedButton(onClick = onOpenHistory, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Outlined.EditCalendar, contentDescription = null)
-                        Text(stringResource(R.string.history_title))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.save_settings)) }
+        }
+        item {
+            SectionCard {
+                Text(stringResource(R.string.history_open), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(R.string.history_open_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = onOpenHistory, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.EditCalendar, contentDescription = null)
+                    Text(stringResource(R.string.history_title))
+                }
+            }
+        }
+        item {
+            SectionCard {
+                Text(stringResource(R.string.data_controls_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.data_controls_body))
+                OutlinedButton(
+                    onClick = { exportLauncher.launch("pace-backup-${LocalDate.now()}.json") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.FileUpload, contentDescription = null)
+                    Text(stringResource(R.string.export_json))
+                }
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.FileDownload, contentDescription = null)
+                    Text(stringResource(R.string.import_json))
+                }
+                if (pendingImport != null) {
+                    Text(stringResource(R.string.import_confirmation))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            pendingImport?.let(onImport)
+                            pendingImport = null
+                        }) { Text(stringResource(R.string.import_confirm)) }
+                        OutlinedButton(onClick = { pendingImport = null }) { Text(stringResource(R.string.cancel)) }
                     }
                 }
             }
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.data_controls_title), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.data_controls_body))
-                    OutlinedButton(
-                        onClick = { exportLauncher.launch("pace-backup-${LocalDate.now()}.json") },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Outlined.FileUpload, contentDescription = null)
-                        Text(stringResource(R.string.export_json))
+        }
+        item {
+            SectionCard {
+                Text(stringResource(R.string.privacy_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.privacy_network_summary))
+                Text(stringResource(R.string.privacy_summary))
+                Text(stringResource(R.string.medical_disclaimer))
+                Text(stringResource(R.string.licenses_summary), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.version_value, BuildConfig.VERSION_NAME, BuildConfig.BUILD_TYPE))
+            }
+        }
+        item {
+            SectionCard {
+                Text(
+                    stringResource(R.string.delete_all_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(stringResource(R.string.delete_all_body))
+                if (!deleteStepTwo) {
+                    OutlinedButton(onClick = { deleteStepTwo = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.DeleteForever, contentDescription = null)
+                        Text(stringResource(R.string.delete_all_first_step))
                     }
-                    OutlinedButton(
-                        onClick = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Outlined.FileDownload, contentDescription = null)
-                        Text(stringResource(R.string.import_json))
-                    }
-                    if (pendingImport != null) {
-                        Text(stringResource(R.string.import_confirmation))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = {
-                                pendingImport?.let(onImport)
-                                pendingImport = null
-                            }) { Text(stringResource(R.string.import_confirm)) }
-                            OutlinedButton(onClick = { pendingImport = null }) { Text(stringResource(R.string.cancel)) }
+                } else {
+                    Text(stringResource(R.string.delete_all_confirmation), color = MaterialTheme.colorScheme.error)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onDeleteAll, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.delete_all_confirm))
                         }
-                    }
-                }
-            }
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.privacy_title), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.privacy_network_summary))
-                    Text(stringResource(R.string.privacy_summary))
-                    Text(stringResource(R.string.medical_disclaimer))
-                    Text(stringResource(R.string.licenses_summary), style = MaterialTheme.typography.bodySmall)
-                    Text(stringResource(R.string.version_value, BuildConfig.VERSION_NAME, BuildConfig.BUILD_TYPE))
-                }
-            }
-            item {
-                SectionCard {
-                    Text(
-                        stringResource(R.string.delete_all_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(stringResource(R.string.delete_all_body))
-                    if (!deleteStepTwo) {
-                        OutlinedButton(onClick = { deleteStepTwo = true }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Outlined.DeleteForever, contentDescription = null)
-                            Text(stringResource(R.string.delete_all_first_step))
-                        }
-                    } else {
-                        Text(stringResource(R.string.delete_all_confirmation), color = MaterialTheme.colorScheme.error)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onDeleteAll, modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.delete_all_confirm))
-                            }
-                            OutlinedButton(onClick = { deleteStepTwo = false }, modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.cancel))
-                            }
+                        OutlinedButton(onClick = { deleteStepTwo = false }, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.cancel))
                         }
                     }
                 }
             }
         }
-    }
+        }
 }
 
 /** Ollama Cloud key entry, model picker and nudge toggle. */
@@ -320,7 +307,10 @@ private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
     }
 
     SectionCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.ai_settings_title), style = MaterialTheme.typography.titleLarge)
                 Text(

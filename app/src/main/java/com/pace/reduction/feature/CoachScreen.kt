@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -48,7 +47,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -130,8 +128,9 @@ internal fun CoachScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.coach_title)) },
+        PaceTopBar(
+            title = stringResource(R.string.coach_title),
+            listState = listState,
             actions = {
                 IconButton(onClick = onStartCall, enabled = uiState.ai.isReady) {
                     Icon(Icons.Outlined.PhoneInTalk, contentDescription = stringResource(R.string.coach_call))
@@ -387,7 +386,8 @@ private fun CoachComposer(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
+                // The app shell already keeps this clear of the navigation bar; only the keyboard
+                // is left to make room for.
                 .imePadding()
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),

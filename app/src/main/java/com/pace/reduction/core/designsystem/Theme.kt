@@ -45,7 +45,20 @@ private fun lightSchemeFor(accent: AccentPalette): ColorScheme {
         onSurface = Color(0xFF1A1D1A),
         surfaceVariant = Color(0xFFE7E6DF),
         onSurfaceVariant = Color(0xFF464A45),
+        // The whole container ramp has to be stated. Material only derives the roles a scheme
+        // leaves out from its own baseline, which is violet — and `surfaceContainer` is what the
+        // navigation bar paints itself with, so leaving it out put a lavender bar under every
+        // screen of an otherwise warm, low-chroma app.
+        surfaceContainerLowest = Color(0xFFFFFFFF),
+        surfaceContainerLow = Color(0xFFFBF8F2),
+        surfaceContainer = Color(0xFFF3F0E8),
+        surfaceContainerHigh = Color(0xFFEEEBE3),
         surfaceContainerHighest = Color(0xFFEBE9E1),
+        surfaceBright = Color(0xFFFFFCF6),
+        surfaceDim = Color(0xFFDEDCD4),
+        inverseSurface = Color(0xFF2F322E),
+        inverseOnSurface = Color(0xFFF0F1EB),
+        scrim = Color(0xFF000000),
         outline = Color(0xFF767B74),
         outlineVariant = Color(0xFFC6C9C1),
         error = Color(0xFF8F4A46),
@@ -80,7 +93,17 @@ private fun darkSchemeFor(accent: AccentPalette, amoled: Boolean): ColorScheme {
         onSurface = Color(0xFFE2E4DE),
         surfaceVariant = if (amoled) Color(0xFF1C1E1B) else Color(0xFF32372F),
         onSurfaceVariant = Color(0xFFC2C7BE),
+        // Same reason as the light scheme: unstated container roles fall back to violet.
+        surfaceContainerLowest = if (amoled) Color(0xFF000000) else Color(0xFF0C0F0B),
+        surfaceContainerLow = if (amoled) Color(0xFF0A0B09) else Color(0xFF151913),
+        surfaceContainer = if (amoled) Color(0xFF0E100D) else Color(0xFF1A1E18),
+        surfaceContainerHigh = if (amoled) Color(0xFF121410) else Color(0xFF1E231C),
         surfaceContainerHighest = if (amoled) Color(0xFF151714) else Color(0xFF23271F),
+        surfaceBright = if (amoled) Color(0xFF2A2C28) else Color(0xFF373B34),
+        surfaceDim = if (amoled) Color(0xFF000000) else Color(0xFF11140F),
+        inverseSurface = Color(0xFFE2E4DE),
+        inverseOnSurface = Color(0xFF1A1D1A),
+        scrim = Color(0xFF000000),
         outline = Color(0xFF8C918A),
         outlineVariant = if (amoled) Color(0xFF2A2D28) else Color(0xFF434841),
         error = Color(0xFFF2B5B0),

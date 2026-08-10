@@ -1,7 +1,6 @@
 package com.pace.reduction.feature
 
 import android.content.Intent
-import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -12,32 +11,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -53,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -80,7 +72,11 @@ import java.time.Duration
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewModel) {
+internal fun EnhancedToolkitScreen(
+    uiState: PaceUiState,
+    viewModel: PaceViewModel,
+    onOpenSettings: () -> Unit,
+) {
     val coach by viewModel.coachState.collectAsStateWithLifecycle()
     var activeTool by rememberSaveable { mutableStateOf<String?>(null) }
     var completedTool by rememberSaveable { mutableStateOf<String?>(null) }
@@ -140,15 +136,17 @@ internal fun EnhancedToolkitScreen(uiState: PaceUiState, viewModel: PaceViewMode
         activeTool = null
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+    PaceScreen(
+        title = stringResource(R.string.toolkit_title),
+        actions = {
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
+            }
+        },
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Text(stringResource(R.string.toolkit_title), style = MaterialTheme.typography.displaySmall)
-            Text(stringResource(R.string.toolkit_intro), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
         item {
             RescueCard(
                 plan = coach.rescuePlan,
