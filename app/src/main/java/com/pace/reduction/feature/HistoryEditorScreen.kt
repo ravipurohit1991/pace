@@ -5,15 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -26,7 +23,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,114 +69,105 @@ internal fun HistoryEditorScreen(
     val parsedMinute = minute.toIntOrNull()
     val timeValid = parsedHour in 0..23 && parsedMinute in 0..59
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.history_title)) },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
-                }
-            },
-        )
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item {
-                SectionCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { viewModel.selectEditorDate(date.minusDays(1)) }) {
-                            Icon(Icons.Outlined.ChevronLeft, contentDescription = stringResource(R.string.history_previous_day))
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                stringResource(R.string.history_day_count, active.size, uiState.settings.dailyCeiling),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.selectEditorDate(date.plusDays(1)) },
-                            enabled = date.isBefore(today),
-                        ) {
-                            Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.history_next_day))
-                        }
+    PaceScreen(
+        title = stringResource(R.string.history_title),
+        onBack = onBack,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.selectEditorDate(date.minusDays(1)) }) {
+                        Icon(Icons.Outlined.ChevronLeft, contentDescription = stringResource(R.string.history_previous_day))
                     }
-                }
-            }
-
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.history_add_title), style = MaterialTheme.typography.titleMedium)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        OutlinedTextField(
-                            value = hour,
-                            onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) hour = it },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(stringResource(R.string.history_hour)) },
-                            isError = hour.isNotEmpty() && parsedHour !in 0..23,
-                            singleLine = true,
+                        Text(
+                            date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
+                            style = MaterialTheme.typography.titleMedium,
                         )
-                        OutlinedTextField(
-                            value = minute,
-                            onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) minute = it },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(stringResource(R.string.history_minute)) },
-                            isError = minute.isNotEmpty() && parsedMinute !in 0..59,
-                            singleLine = true,
+                        Text(
+                            stringResource(R.string.history_day_count, active.size, uiState.settings.dailyCeiling),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Button(
-                        onClick = {
-                            viewModel.addHistoryEntry(parsedHour ?: 0, parsedMinute ?: 0)
-                            hour = ""
-                            minute = ""
-                        },
-                        enabled = timeValid,
-                        modifier = Modifier.fillMaxWidth(),
+                    IconButton(
+                        onClick = { viewModel.selectEditorDate(date.plusDays(1)) },
+                        enabled = date.isBefore(today),
                     ) {
-                        Icon(Icons.Outlined.Add, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text(stringResource(R.string.history_add_action))
+                        Icon(Icons.Outlined.ChevronRight, contentDescription = stringResource(R.string.history_next_day))
                     }
-                    Text(
-                        stringResource(R.string.history_add_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
-            }
-
-            item {
-                Text(stringResource(R.string.history_entries), style = MaterialTheme.typography.titleMedium)
-            }
-
-            if (logs.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.history_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            items(logs, key = CigaretteLog::id) { log ->
-                HistoryRow(log = log, onDelete = { viewModel.deleteHistoryEntry(log.id) })
             }
         }
-    }
+
+        item {
+            SectionCard {
+                Text(stringResource(R.string.history_add_title), style = MaterialTheme.typography.titleMedium)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = hour,
+                        onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) hour = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text(stringResource(R.string.history_hour)) },
+                        isError = hour.isNotEmpty() && parsedHour !in 0..23,
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = minute,
+                        onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) minute = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text(stringResource(R.string.history_minute)) },
+                        isError = minute.isNotEmpty() && parsedMinute !in 0..59,
+                        singleLine = true,
+                    )
+                }
+                Button(
+                    onClick = {
+                        viewModel.addHistoryEntry(parsedHour ?: 0, parsedMinute ?: 0)
+                        hour = ""
+                        minute = ""
+                    },
+                    enabled = timeValid,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text(stringResource(R.string.history_add_action))
+                }
+                Text(
+                    stringResource(R.string.history_add_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item {
+            Text(stringResource(R.string.history_entries), style = MaterialTheme.typography.titleMedium)
+        }
+
+        if (logs.isEmpty()) {
+            item {
+                Text(
+                    stringResource(R.string.history_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        items(logs, key = CigaretteLog::id) { log ->
+            HistoryRow(log = log, onDelete = { viewModel.deleteHistoryEntry(log.id) })
+        }
+        }
 }
 
 @Composable

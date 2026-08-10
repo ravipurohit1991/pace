@@ -65,6 +65,14 @@
     <string name="last_logged_at">Last at %1$s</string>
     <string name="plan_title">Plan</string>
     <string name="plan_intro">Change one thing at a time. History is never rewritten.</string>
+    <string name="plan_section_limits">Daily limits</string>
+    <string name="plan_section_day">Your day</string>
+    <string name="plan_section_reduction">Stepping down</string>
+    <string name="plan_section_money">Money</string>
+    <string name="plan_section_motivation">Motivation</string>
+    <string name="plan_section_reminders">Reminders</string>
+    <string name="select_time">Select time</string>
+    <string name="confirm">OK</string>
     <string name="tomorrow_effective_warning">Below today’s count — this takes effect tomorrow.</string>
     <string name="wake_label">Wake</string>
     <string name="sleep_label">Sleep</string>
