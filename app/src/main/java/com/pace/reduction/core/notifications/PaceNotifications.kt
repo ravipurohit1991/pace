@@ -29,6 +29,7 @@ object PaceNotifications {
     private const val LOCATION_ID = 2002
     private const val NUDGE_ID = 2003
     private const val CHECKUP_ID = 2004
+    private const val SUPPORT_GROUP = "pace_support"
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -51,7 +52,7 @@ object PaceNotifications {
         ) == PackageManager.PERMISSION_GRANTED) && NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     @SuppressLint("MissingPermission")
-    fun postCoaching(context: Context) {
+    fun postCoaching(context: Context, privateOnLockScreen: Boolean = true) {
         if (!canPost(context)) return
         val toolkitIntent = Intent(context, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_TOOLKIT)
@@ -74,9 +75,12 @@ object PaceNotifications {
             .setContentText(context.getString(R.string.notification_checkin_body))
             .setContentIntent(toolkitPending)
             .setAutoCancel(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setGroup(SUPPORT_GROUP)
+            .setOnlyAlertOnce(true)
             .addAction(0, context.getString(R.string.pause_five), toolkitPending)
             .addAction(0, context.getString(R.string.dismiss), dismissPending)
+            .applyLockScreenPrivacy(context, privateOnLockScreen)
             .build()
         NotificationManagerCompat.from(context).notify(COACHING_ID, notification)
     }
@@ -86,7 +90,7 @@ object PaceNotifications {
      * so the conversation can continue where the notification left off.
      */
     @SuppressLint("MissingPermission")
-    fun postCoachNudge(context: Context, message: String) {
+    fun postCoachNudge(context: Context, message: String, privateOnLockScreen: Boolean = true) {
         if (!canPost(context)) return
         val text = message.ifBlank { context.getString(R.string.notification_nudge_fallback) }
         val coachIntent = Intent(context, MainActivity::class.java)
@@ -113,16 +117,19 @@ object PaceNotifications {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(coachPending)
                 .setAutoCancel(true)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setGroup(SUPPORT_GROUP)
+                .setOnlyAlertOnce(true)
                 .addAction(0, context.getString(R.string.notification_nudge_action), coachPending)
                 .addAction(0, context.getString(R.string.dismiss), dismissPending)
+                .applyLockScreenPrivacy(context, privateOnLockScreen)
                 .build(),
         )
     }
 
     /** Unprompted check-in written by the coach; opens the chat so the user can answer back. */
     @SuppressLint("MissingPermission")
-    fun postCoachCheckup(context: Context, message: String) {
+    fun postCoachCheckup(context: Context, message: String, privateOnLockScreen: Boolean = true) {
         if (!canPost(context) || message.isBlank()) return
         val coachPending = PendingIntent.getActivity(
             context,
@@ -147,9 +154,12 @@ object PaceNotifications {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
                 .setContentIntent(coachPending)
                 .setAutoCancel(true)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setGroup(SUPPORT_GROUP)
+                .setOnlyAlertOnce(true)
                 .addAction(0, context.getString(R.string.notification_nudge_action), coachPending)
                 .addAction(0, context.getString(R.string.dismiss), dismissPending)
+                .applyLockScreenPrivacy(context, privateOnLockScreen)
                 .build(),
         )
     }
@@ -178,6 +188,35 @@ object PaceNotifications {
                 .build(),
         )
     }
+
+    /** Clears any daytime prompt that might otherwise remain visible after quiet hours begin. */
+    fun cancelReminders(context: Context) {
+        NotificationManagerCompat.from(context).run {
+            cancel(COACHING_ID)
+            cancel(NUDGE_ID)
+            cancel(CHECKUP_ID)
+            cancel(LOCATION_ID)
+        }
+    }
+
+    private fun NotificationCompat.Builder.applyLockScreenPrivacy(
+        context: Context,
+        privateOnLockScreen: Boolean,
+    ): NotificationCompat.Builder = apply {
+        if (privateOnLockScreen) {
+            setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            setPublicVersion(
+                NotificationCompat.Builder(context, CHECKINS)
+                    .setSmallIcon(R.drawable.ic_pace_notification)
+                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentText(context.getString(R.string.notification_private_preview))
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .build(),
+            )
+        } else {
+            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        }
+    }
 }
 
 class NotificationDismissReceiver : BroadcastReceiver() {
@@ -186,7 +225,7 @@ class NotificationDismissReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 (context.applicationContext as PaceApplication).container.repository.dismissCoachingNotifications()
-                context.getSystemService(NotificationManager::class.java).cancel(2001)
+                PaceNotifications.cancelReminders(context)
             } finally {
                 pendingResult.finish()
             }

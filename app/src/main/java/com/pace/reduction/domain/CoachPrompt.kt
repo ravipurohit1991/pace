@@ -63,6 +63,12 @@ object CoachPrompt {
             "- Never give medical advice. For anything medical, cheerfully point them to a clinician.\n\n" +
             "Format: plain conversational text. No markdown, no headings, no bullet lists."
 
+    /** Additional system-level direction used only when the current turn contains an image. */
+    const val DEFAULT_IMAGE_INSTRUCTION =
+        "Inspect the attached image carefully and answer the user's actual question about it. " +
+            "Mention only details you can reasonably see; say when something is unclear instead of guessing. " +
+            "Keep the response concise and conversational."
+
     /** Sweet, affectionate and relentlessly distracting. */
     const val BUBBLY_PERSONA =
         "You are Pace — bubbly, sweet and completely delighted to hear from them. Think favourite " +
@@ -116,11 +122,16 @@ object CoachPrompt {
         context: CoachContext?,
         history: List<OllamaMessage>,
         persona: String = DEFAULT_PERSONA,
+        extraSystemInstruction: String = "",
     ): List<OllamaMessage> = buildList {
         val system = buildString {
             append(persona.ifBlank { DEFAULT_PERSONA })
             append("\n\n")
             append(instruction(task))
+            if (extraSystemInstruction.isNotBlank()) {
+                append("\n\nPhoto instruction:\n")
+                append(extraSystemInstruction.trim())
+            }
             if (context != null) {
                 append("\n\n")
                 append(facts(context))

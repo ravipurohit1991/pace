@@ -8,23 +8,26 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -81,6 +84,9 @@ internal fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var reminder by rememberSaveable(uiState.settings.reminderIntensity) { mutableStateOf(uiState.settings.reminderIntensity) }
     var haptics by rememberSaveable(uiState.settings.hapticsEnabled) { mutableStateOf(uiState.settings.hapticsEnabled) }
+    var privateOnLockScreen by rememberSaveable(uiState.settings.notificationPrivate) {
+        mutableStateOf(uiState.settings.notificationPrivate)
+    }
     var deleteStepTwo by rememberSaveable { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
     var notificationEducation by rememberSaveable { mutableStateOf(false) }
@@ -188,12 +194,26 @@ internal fun SettingsScreen(
                         checked = haptics,
                         onCheckedChange = { haptics = it },
                     )
+                    SettingSwitch(
+                        title = stringResource(R.string.notification_private_title),
+                        body = stringResource(R.string.notification_private_body),
+                        checked = privateOnLockScreen,
+                        onCheckedChange = { privateOnLockScreen = it },
+                    )
                 }
             }
             item { AiCoachSection(uiState, viewModel) }
             item {
                 Button(
-                    onClick = { onSave(uiState.settings.copy(reminderIntensity = reminder, hapticsEnabled = haptics)) },
+                    onClick = {
+                        onSave(
+                            uiState.settings.copy(
+                                reminderIntensity = reminder,
+                                hapticsEnabled = haptics,
+                                notificationPrivate = privateOnLockScreen,
+                            ),
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.save_settings)) }
             }
@@ -293,7 +313,11 @@ private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var revealKey by rememberSaveable { mutableStateOf(false) }
 
-    val models = coach.verifiedModels.ifEmpty { OllamaClient.SUGGESTED_MODELS }
+    val verifiedModels = coach.verifiedModels
+    val compatibleModels = verifiedModels.ifEmpty { listOf(OllamaClient.DEFAULT_MODEL) }
+    LaunchedEffect(compatibleModels) {
+        if (model !in compatibleModels) model = compatibleModels.first()
+    }
 
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -349,16 +373,21 @@ private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
             Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
 
-        Text(stringResource(R.string.ai_model), style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            models.take(8).forEach { option ->
-                FilterChip(
-                    selected = model == option,
-                    onClick = { model = option },
-                    label = { Text(option) },
-                )
-            }
+        if (verifiedModels.isNotEmpty()) {
+            Text(
+                stringResource(R.string.ai_models_verified, verifiedModels.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
+
+        ModelChoice(
+            title = stringResource(R.string.ai_multimodal_model),
+            supporting = stringResource(R.string.ai_multimodal_model_body),
+            value = model,
+            options = compatibleModels,
+            onValueChange = { model = it },
+        )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.ai_nudges), modifier = Modifier.weight(1f))
@@ -367,7 +396,7 @@ private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
 
         Button(
             onClick = {
-                viewModel.saveAiSettings(enabled, apiKey, model, nudges)
+                viewModel.saveAiSettings(enabled, apiKey, model, model, nudges)
                 apiKey = ""
             },
             modifier = Modifier.fillMaxWidth(),
@@ -376,6 +405,48 @@ private fun AiCoachSection(uiState: PaceUiState, viewModel: PaceViewModel) {
         if (saved.apiKey.isNotBlank()) {
             OutlinedButton(onClick = viewModel::clearApiKey, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.ai_clear_key))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelChoice(
+    title: String,
+    supporting: String,
+    value: String,
+    options: List<String>,
+    onValueChange: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            supporting,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(value, modifier = Modifier.weight(1f))
+                Icon(Icons.Outlined.ExpandMore, contentDescription = null)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            onValueChange(option)
+                            expanded = false
+                        },
+                    )
+                }
             }
         }
     }

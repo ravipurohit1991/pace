@@ -7,7 +7,8 @@ Pace is a private Android companion for cutting down and stopping smoking. It pa
 do, and reaches out *before* your next scheduled window instead of after.
 
 Your history never leaves the device. The coach is opt-in, uses **your own** Ollama API key, and sends only the
-handful of numbers already on your screen.
+message or voice turn you submit, photos you explicitly attach, and the handful of optional grounding numbers
+already on your screen.
 
 | Today | AI coach | Body recovery |
 | --- | --- | --- |
@@ -51,6 +52,12 @@ stretch of the day on the Plan screen and it leans in harder then.
 
 Replies stream token by token and can be stopped mid-sentence. **Riddle me** pulls a two-minute
 lateral-thinking puzzle to occupy your head until the moment passes.
+
+The phone button opens a voice-only call: Android turns speech into a text turn for the coach, then reads the
+reply aloud with the device TTS voice. Neither side is shown as text, and the call history is discarded when
+the call screen closes. The normal composer can also pick a photo or open the camera; attached images use the
+same vision-capable Ollama model as the reply. Image bytes are sent once and discarded; a short visual
+description is kept privately with the chat so later replies still understand the conversation.
 
 The tune icon on the Coach screen opens its settings: pick a personality or **edit the system prompt**
 outright, **toggle whether your stats are shared** with the model, and set how often it checks in.
@@ -115,7 +122,9 @@ no AI key.
 
 Time until your next window as the headline figure, today's count against the ceiling, a proportional
 ceiling meter, clean-stretch and money pills, your badge count, a line that refreshes hourly, and Talk and
-Log actions. It re-renders exactly when a window ends, so the countdown never outlives the wait.
+Log actions. It re-renders exactly when a window ends, so the countdown never outlives the wait. At sleep time,
+the widget switches to a neutral rest face with no countdown, count, clean-stretch statistic, quote, or action;
+the normal view returns at wake time.
 
 Under the meter runs an indeterminate progress bar  the one thing on a home-screen widget that genuinely
 moves, animated by the system with no app process running, so a widget mid-wait never looks frozen. The
@@ -150,7 +159,7 @@ working miniature sits above the controls  a widget is the one surface you canno
 2. In Pace, open **Settings → AI coach** and turn it on.
 3. Paste the key and tap **Test key**. Pace calls `/api/tags` and replaces the suggested models with the ones
    your account can actually reach.
-4. Pick a model, leave **Nudge me before my next window** on, and tap **Save**.
+4. Tap **Check key & models**, choose a verified vision-capable model, and tap **Save**. The same model handles chat, voice, and photos.
 
 ![AI settings](docs/screenshots/06-settings-ai.png)
 
@@ -161,8 +170,8 @@ preferences store, so it is never at rest in readable form. **Remove key** clear
 
 - The key lives only on your device. It is never logged, included in JSON exports, or committed to this repository.
 - Requests go to `https://ollama.com` over HTTPS. Nothing is sent until you enable the coach and save a key.
-- Only the grounded figures listed above are transmitted  never your raw log history, notes, or locations.
-- Reasoning traces returned by thinking models are discarded; only the reply text is kept.
+- Only the current text/voice turn, explicitly attached image, and grounded figures listed above are transmitted — never your raw log history, notes, or locations.
+- Reasoning traces returned by thinking models are discarded. Chat replies are kept in chat history; voice-call turns are memory-only.
 - Turn the coach off and Pace is fully offline again.
 
 ---
@@ -200,7 +209,7 @@ can reach the repository:
 
 ```properties
 pace.ollamaApiKey=sk-your-own-key
-pace.ollamaModel=gpt-oss:120b
+pace.ollamaModel=qwen3.5:397b-cloud
 pace.seedYesterday=7
 pace.seedToday=5
 pace.seedLastTime=14:42

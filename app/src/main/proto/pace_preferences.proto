@@ -127,6 +127,10 @@ message PacePreferences {
   bool widget_skip_log_confirm = 69;
   bool widget_disable_pulse = 70;
   WidgetTickProto widget_tick = 71;
+
+  // Retained for migration; the app now stores one multimodal model in both fields.
+  string ollama_vision_model = 72;
+  string ollama_image_system_prompt = 73;
 }
 
 enum WidgetStateProto {

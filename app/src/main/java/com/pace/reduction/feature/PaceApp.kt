@@ -30,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircle
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Forum
@@ -123,6 +124,9 @@ private data object TodayDestination : NavKey
 
 @Serializable
 private data object CoachDestination : NavKey
+
+@Serializable
+private data object VoiceCallDestination : NavKey
 
 @Serializable
 private data object PlanDestination : NavKey
@@ -248,6 +252,7 @@ private fun MainShell(
         when (requested) {
             com.pace.reduction.MainActivity.DESTINATION_TOOLKIT -> ToolkitDestination
             com.pace.reduction.MainActivity.DESTINATION_COACH -> CoachDestination
+            com.pace.reduction.MainActivity.DESTINATION_CALL -> VoiceCallDestination
             else -> TodayDestination
         }
     }
@@ -343,6 +348,13 @@ private fun MainShell(
                         uiState = uiState,
                         viewModel = viewModel,
                         onOpenSettings = { backStack.add(SettingsDestination) },
+                        onStartCall = { backStack.add(VoiceCallDestination) },
+                    )
+                }
+                entry<VoiceCallDestination> {
+                    VoiceCallScreen(
+                        viewModel = viewModel,
+                        onBack = { backStack.removeLastOrNull() },
                     )
                 }
                 entry<PlanDestination> { PlanScreen(uiState, onSavePlan) }
@@ -384,6 +396,7 @@ private fun TodayScreen(
 ) {
     val today = requireNotNull(uiState.today)
     val quit = uiState.quit
+    val resting = today.status is PacingStatus.Rest
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val locale = LocalConfiguration.current.locales[0]
@@ -428,8 +441,12 @@ private fun TodayScreen(
                 },
             )
         }
-        item { Box(Modifier.entrance(0)) { PacingHero(uiState) } }
         item {
+            Box(Modifier.entrance(0)) {
+                if (resting) RestHero() else PacingHero(uiState)
+            }
+        }
+        if (!resting) item {
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp).entrance(1),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -449,7 +466,7 @@ private fun TodayScreen(
                 }
             }
         }
-        if (quit != null) {
+        if (quit != null && !resting) {
             item {
                 Row(
                     modifier = Modifier.padding(horizontal = 20.dp).entrance(2),
@@ -483,7 +500,7 @@ private fun TodayScreen(
                 NextMilestoneCard(quit, modifier = Modifier.padding(horizontal = 20.dp).entrance(3))
             }
         }
-        item {
+        if (!resting) item {
             SectionCard(modifier = Modifier.padding(horizontal = 20.dp).entrance(4)) {
                 Text(coachingMessage, style = MaterialTheme.typography.titleMedium)
                 if (uiState.settings.personalReason.isNotBlank()) {
@@ -517,6 +534,34 @@ private fun TodayScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Sleep hours deliberately contain no counter, timer, smoke-free duration, or coaching cue. */
+@Composable
+private fun RestHero() {
+    Card(
+        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Bedtime,
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(stringResource(R.string.rest_mode_title), style = MaterialTheme.typography.headlineSmall)
+            Text(
+                stringResource(R.string.rest_mode_body),
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
         }
     }
 }

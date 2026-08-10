@@ -4,10 +4,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import com.pace.reduction.core.coach.CoachService
+import com.pace.reduction.core.network.OllamaMessage
 import com.pace.reduction.data.repository.PaceRepository
 import com.pace.reduction.domain.PacingCalculator
+import com.pace.reduction.domain.CoachImageMemory
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.ProgressMetrics
 import com.pace.reduction.domain.AdaptiveSpacing
@@ -24,6 +28,8 @@ import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.TodaySummary
 import com.pace.reduction.domain.model.UrgeSession
 import com.pace.reduction.domain.model.WidgetSettings
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -80,6 +86,14 @@ data class CoachUiState(
     val insightBusy: Boolean = false,
 )
 
+/** Transient call state. Transcript and reply text are never exposed by the call screen. */
+data class VoiceCallUiState(
+    val thinking: Boolean = false,
+    val replyToSpeak: String = "",
+    val replyId: Long = 0L,
+    val error: String? = null,
+)
+
 sealed interface PaceEvent {
     data class CigaretteLogged(val id: String) : PaceEvent
     data object LogUndone : PaceEvent
@@ -119,11 +133,18 @@ class PaceViewModel(
         viewModelScope.launch {
             repository.refreshWidgetSnapshot()
         }
+        // A camera app may be interrupted before its result callback. Never let that temporary
+        // capture survive into a later app session.
+        viewModelScope.launch(Dispatchers.IO) { purgeCoachImageCache() }
     }
 
     private val _coachState = MutableStateFlow(CoachUiState())
     val coachState: StateFlow<CoachUiState> = _coachState.asStateFlow()
     private var coachJob: Job? = null
+    private val _voiceCallState = MutableStateFlow(VoiceCallUiState())
+    val voiceCallState: StateFlow<VoiceCallUiState> = _voiceCallState.asStateFlow()
+    private val voiceHistory = ArrayDeque<OllamaMessage>()
+    private var voiceJob: Job? = null
 
     /**
      * Drives every derived figure on screen, so its rate is the app's foreground cost.
@@ -325,15 +346,95 @@ class PaceViewModel(
         }
     }
 
-    fun sendCoachMessage(text: String) {
-        val prompt = text.trim()
-        if (prompt.isEmpty() || _coachState.value.busy) return
+    fun sendCoachMessage(text: String, imageBytes: ByteArray? = null) {
+        val prompt = text.trim().ifEmpty {
+            if (imageBytes != null) "What do you notice in this photo?" else return
+        }
+        if (_coachState.value.busy) return
         coachJob?.cancel()
         coachJob = viewModelScope.launch {
-            // Persist first so the service replays this turn along with the prior conversation.
-            repository.appendCoachMessage("user", prompt)
-            streamReply { coachService.chatStream() }
+            val image = if (imageBytes == null) {
+                null
+            } else {
+                runCatching { withContext(Dispatchers.Default) { prepareVisionImage(imageBytes) } }
+                    .getOrElse { error ->
+                        _coachState.update { it.copy(error = error.userMessage()) }
+                        return@launch
+                    }
+            }
+            // The prompt stays in chat history. Photo bytes go straight to Ollama and are not
+            // persisted on-device by Pace.
+            val messageId = repository.appendCoachMessage("user", if (image == null) prompt else "📷 $prompt")
+            if (image == null) {
+                streamReply { coachService.chatStream() }
+            } else {
+                completeImageReply(messageId, prompt, image)
+            }
         }
+    }
+
+    private suspend fun completeImageReply(messageId: String, prompt: String, imageBase64: String) {
+        _coachState.update { it.copy(busy = true, error = null, streamingReply = "") }
+        runCatching { coachService.imageReply(imageBase64) }.fold(
+            onSuccess = { result ->
+                repository.updateCoachMessage(
+                    messageId,
+                    CoachImageMemory.encode(prompt, result.imageContext),
+                )
+                if (result.reply.isNotBlank()) repository.appendCoachMessage("assistant", result.reply)
+                _coachState.update { it.copy(busy = false, streamingReply = "") }
+            },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                _coachState.update {
+                    it.copy(busy = false, streamingReply = "", error = error.userMessage())
+                }
+            },
+        )
+    }
+
+    /** Sends one speech transcript while keeping the spoken conversation only in memory. */
+    fun sendVoiceMessage(text: String) {
+        val prompt = text.trim().take(500)
+        if (prompt.isEmpty() || _voiceCallState.value.thinking) return
+        voiceJob?.cancel()
+        voiceJob = viewModelScope.launch {
+            _voiceCallState.value = VoiceCallUiState(thinking = true)
+            voiceHistory.addLast(OllamaMessage("user", prompt))
+            while (voiceHistory.size > VOICE_HISTORY_LIMIT) voiceHistory.removeFirst()
+            runCatching { coachService.voiceReply(voiceHistory.toList()) }.fold(
+                onSuccess = { reply ->
+                    if (reply.isBlank()) {
+                        _voiceCallState.value = VoiceCallUiState(
+                            error = "The coach did not return a spoken reply",
+                        )
+                    } else {
+                        voiceHistory.addLast(OllamaMessage("assistant", reply))
+                        while (voiceHistory.size > VOICE_HISTORY_LIMIT) voiceHistory.removeFirst()
+                        _voiceCallState.value = VoiceCallUiState(
+                            replyToSpeak = reply,
+                            replyId = System.nanoTime(),
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    if (error is CancellationException) throw error
+                    if (voiceHistory.lastOrNull()?.role == "user") voiceHistory.removeLast()
+                    _voiceCallState.value = VoiceCallUiState(error = error.userMessage())
+                },
+            )
+        }
+    }
+
+    fun consumeVoiceReply() = _voiceCallState.update { it.copy(replyToSpeak = "") }
+
+    fun dismissVoiceError() = _voiceCallState.update { it.copy(error = null) }
+
+    fun stopVoiceCall() {
+        voiceJob?.cancel()
+        voiceJob = null
+        voiceHistory.clear()
+        _voiceCallState.value = VoiceCallUiState()
     }
 
     /** Asks the coach for a riddle without the user having to type anything. */
@@ -403,7 +504,10 @@ class PaceViewModel(
         coachJob?.cancel()
         coachJob = null
         _coachState.value = CoachUiState()
-        viewModelScope.launch { repository.clearCoachMessages() }
+        viewModelScope.launch {
+            repository.clearCoachMessages()
+            withContext(Dispatchers.IO) { purgeCoachImageCache() }
+        }
     }
 
     fun dismissCoachError() = _coachState.update { it.copy(error = null) }
@@ -425,9 +529,15 @@ class PaceViewModel(
         }
     }
 
-    fun saveAiSettings(enabled: Boolean, apiKey: String, model: String, proactiveNudges: Boolean) {
+    fun saveAiSettings(
+        enabled: Boolean,
+        apiKey: String,
+        model: String,
+        visionModel: String,
+        proactiveNudges: Boolean,
+    ) {
         viewModelScope.launch {
-            repository.saveAiSettings(enabled, apiKey, model, proactiveNudges)
+            repository.saveAiSettings(enabled, apiKey, model, visionModel, proactiveNudges)
             _events.emit(PaceEvent.CoachSettingsSaved)
         }
     }
@@ -474,12 +584,19 @@ class PaceViewModel(
 
     fun saveCoachBehaviour(
         systemPrompt: String,
+        imageSystemPrompt: String,
         includeStats: Boolean,
         checkupsEnabled: Boolean,
         checkupIntervalMinutes: Int,
     ) {
         viewModelScope.launch {
-            repository.saveCoachBehaviour(systemPrompt, includeStats, checkupsEnabled, checkupIntervalMinutes)
+            repository.saveCoachBehaviour(
+                systemPrompt,
+                imageSystemPrompt,
+                includeStats,
+                checkupsEnabled,
+                checkupIntervalMinutes,
+            )
             _events.emit(PaceEvent.CoachSettingsSaved)
         }
     }
@@ -520,6 +637,7 @@ class PaceViewModel(
     fun deleteAllData() {
         viewModelScope.launch {
             repository.deleteAllData()
+            withContext(Dispatchers.IO) { purgeCoachImageCache() }
             _events.emit(PaceEvent.DataDeleted)
         }
     }
@@ -564,12 +682,65 @@ class PaceViewModel(
         }
     }
 
+    /** Downsamples and normalises a picked image before base64 inflates it for the REST request. */
+    private fun prepareVisionImage(input: ByteArray): String {
+        require(input.isNotEmpty()) { "That photo could not be read" }
+        require(input.size <= MAX_IMAGE_INPUT_BYTES) { "Choose a photo smaller than 20 MB" }
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(input, 0, input.size, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "That file is not a supported photo" }
+
+        var sample = 1
+        while (bounds.outWidth / sample > MAX_IMAGE_EDGE * 2 || bounds.outHeight / sample > MAX_IMAGE_EDGE * 2) {
+            sample *= 2
+        }
+        val decoded = BitmapFactory.decodeByteArray(
+            input,
+            0,
+            input.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        ) ?: error("That photo could not be decoded")
+        val largest = maxOf(decoded.width, decoded.height)
+        val scaled = if (largest > MAX_IMAGE_EDGE) {
+            val ratio = MAX_IMAGE_EDGE.toFloat() / largest
+            android.graphics.Bitmap.createScaledBitmap(
+                decoded,
+                (decoded.width * ratio).toInt().coerceAtLeast(1),
+                (decoded.height * ratio).toInt().coerceAtLeast(1),
+                true,
+            ).also { decoded.recycle() }
+        } else {
+            decoded
+        }
+        return try {
+            val output = ByteArrayOutputStream()
+            require(scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, output)) {
+                "That photo could not be prepared"
+            }
+            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        } finally {
+            scaled.recycle()
+        }
+    }
+
+    /** Captures live only in this private cache directory and are never part of chat storage. */
+    private fun purgeCoachImageCache() {
+        val directory = File(getApplication<PaceApplication>().cacheDir, COACH_IMAGE_CACHE_DIRECTORY)
+        directory.listFiles()?.forEach { file -> if (file.isFile) file.delete() }
+        directory.delete()
+    }
+
     companion object {
         /**
          * Fast enough that a window opening feels immediate and the "1h 36m" line never looks
          * wrong, slow enough that sitting on Today is not a busy loop.
          */
         private const val IDLE_TICK_MS = 5_000L
+        private const val VOICE_HISTORY_LIMIT = 20
+        private const val MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024
+        private const val MAX_IMAGE_EDGE = 1_536
+        private const val COACH_IMAGE_CACHE_DIRECTORY = "coach-images"
 
         fun factory(application: PaceApplication): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {

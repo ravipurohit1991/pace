@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_DESTINATION = "pace_destination"
         const val DESTINATION_TOOLKIT = "toolkit"
         const val DESTINATION_COACH = "coach"
+        const val DESTINATION_CALL = "call"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

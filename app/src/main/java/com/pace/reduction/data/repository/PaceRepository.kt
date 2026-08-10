@@ -8,6 +8,7 @@ import androidx.glance.appwidget.updateAll
 import androidx.room.withTransaction
 import com.pace.reduction.R
 import com.pace.reduction.core.notifications.NotificationPolicy
+import com.pace.reduction.core.notifications.PaceNotifications
 import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.security.SecretVault
 import com.pace.reduction.data.db.CoachMessageEntity
@@ -118,12 +119,17 @@ class PaceRepository(
     }
 
     val aiSettings: Flow<AiSettings> = preferencesStore.data.map { preferences ->
+        val configuredModel = preferences.ollamaVisionModel
+            .takeUnless { it.isBlank() || it in RETIRED_VISION_MODELS }
+            ?: OllamaClient.DEFAULT_MODEL
         AiSettings(
             enabled = preferences.ollamaEnabled,
             apiKey = SecretVault.decrypt(preferences.ollamaApiKeyCiphertext.toByteArray()),
-            model = preferences.ollamaModel.ifBlank { OllamaClient.DEFAULT_MODEL },
+            model = configuredModel,
+            visionModel = configuredModel,
             proactiveNudges = preferences.ollamaProactiveNudges,
             systemPrompt = preferences.ollamaSystemPrompt,
+            imageSystemPrompt = preferences.ollamaImageSystemPrompt,
             includeStats = !preferences.ollamaOmitStats,
             checkupsEnabled = preferences.ollamaCheckupsEnabled,
             checkupIntervalMinutes = preferences.ollamaCheckupIntervalMinutes.takeIf { it > 0 } ?: 180,
@@ -412,12 +418,22 @@ class PaceRepository(
         return id
     }
 
-    suspend fun saveAiSettings(enabled: Boolean, apiKey: String, model: String, proactiveNudges: Boolean) {
+    suspend fun saveAiSettings(
+        enabled: Boolean,
+        apiKey: String,
+        model: String,
+        visionModel: String,
+        proactiveNudges: Boolean,
+    ) {
         val trimmedKey = apiKey.trim().take(MAX_API_KEY_CHARS)
+        val unifiedModel = visionModel.trim().ifBlank { model.trim() }
+            .take(96)
+            .ifBlank { OllamaClient.DEFAULT_MODEL }
         preferencesStore.updateData { current ->
             current.toBuilder()
                 .setOllamaEnabled(enabled)
-                .setOllamaModel(model.trim().take(96).ifBlank { OllamaClient.DEFAULT_MODEL })
+                .setOllamaModel(unifiedModel)
+                .setOllamaVisionModel(unifiedModel)
                 .setOllamaProactiveNudges(proactiveNudges)
                 .apply {
                     if (trimmedKey.isNotEmpty()) {
@@ -431,6 +447,7 @@ class PaceRepository(
     /** Coach behaviour the user edits from the Coach screen. */
     suspend fun saveCoachBehaviour(
         systemPrompt: String,
+        imageSystemPrompt: String,
         includeStats: Boolean,
         checkupsEnabled: Boolean,
         checkupIntervalMinutes: Int,
@@ -438,6 +455,7 @@ class PaceRepository(
         preferencesStore.updateData { current ->
             current.toBuilder()
                 .setOllamaSystemPrompt(systemPrompt.trim().take(MAX_SYSTEM_PROMPT_CHARS))
+                .setOllamaImageSystemPrompt(imageSystemPrompt.trim().take(MAX_SYSTEM_PROMPT_CHARS))
                 .setOllamaOmitStats(!includeStats)
                 .setOllamaCheckupsEnabled(checkupsEnabled)
                 .setOllamaCheckupIntervalMinutes(checkupIntervalMinutes.coerceIn(30, 24 * 60))
@@ -574,7 +592,7 @@ class PaceRepository(
 
     /** True when the widget's line is older than an hour and worth replacing. */
     suspend fun widgetQuoteIsStale(): Boolean {
-        if (!aiSettings.first().isReady) return false
+        if (!aiSettings.first().isReady || isQuietHoursNow()) return false
         val generated = widgetStore.data.first().quoteGeneratedEpochMs
         return clock.millis() - generated >= QUOTE_REFRESH_MS
     }
@@ -856,6 +874,8 @@ class PaceRepository(
         return PacingCalculator.calculate(now, zone, effectivePlan(plan), logs).status is PacingStatus.Rest
     }
 
+    suspend fun notificationsArePrivate(): Boolean = settings.first().notificationPrivate
+
     private fun validateBackup(backup: PaceBackup) {
         PaceBackupValidator.validate(backup, clock.millis())
         require(backup.schemaVersion == 1) { "Unsupported backup schema" }
@@ -990,8 +1010,21 @@ class PaceRepository(
                 .build()
         }
         PaceWidget().updateAll(context)
-        // Flip the widget's countdown exactly when this window ends.
-        WidgetBoundaryWorker.scheduleAt(context, stateUntil?.toEpochMilli() ?: 0L)
+        if (summary.status is PacingStatus.Rest) PaceNotifications.cancelReminders(context)
+        // Refresh at whichever comes first: the current state boundary or bedtime. Bedtime matters
+        // even for WindowMet/Ceiling states, which otherwise have no deadline and could leave a
+        // daytime smoking prompt on the widget or lock screen overnight.
+        val todaySleep = date.atTime(PacingCalculator.scheduleFor(date, plan).sleep).atZone(zone)
+        val nextSleep = if (todaySleep.toInstant().isAfter(now)) {
+            todaySleep
+        } else {
+            val tomorrow = date.plusDays(1)
+            tomorrow.atTime(PacingCalculator.scheduleFor(tomorrow, plan).sleep).atZone(zone)
+        }
+        val refreshBoundary = listOfNotNull(stateUntil, nextSleep.toInstant())
+            .filter { it.isAfter(now) }
+            .minOrNull()
+        WidgetBoundaryWorker.scheduleAt(context, refreshBoundary?.toEpochMilli() ?: 0L)
         // Between now and that boundary, keep the remaining time and the stats current.
         WidgetTickWorker.reschedule(
             context = context,
@@ -1069,7 +1102,8 @@ class PaceRepository(
             }
             val eligible = NotificationPolicy.isEligible(
                 nowEpochMs = now.toEpochMilli(),
-                quietHours = summary.status is PacingStatus.Rest,
+                // Reaching this block already required a Spacing state above; Rest returned early.
+                quietHours = false,
                 countToday = countToday,
                 dailyMaximum = NUDGE_DAILY_MAXIMUM,
                 lastNotificationEpochMs = current.lastCoachingNotificationEpochMs,
@@ -1452,5 +1486,6 @@ class PaceRepository(
         /** Fire a nudge when the next planned window is this close. */
         const val NUDGE_LEAD_MINUTES = 20L
         const val NUDGE_DAILY_MAXIMUM = 4
+        val RETIRED_VISION_MODELS = setOf("gemma3:27b", "qwen3-vl:235b")
     }
 }

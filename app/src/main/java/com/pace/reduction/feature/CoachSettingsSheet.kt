@@ -52,6 +52,9 @@ internal fun CoachSettingsSheet(
     var prompt by rememberSaveable(ai.systemPrompt) {
         mutableStateOf(ai.systemPrompt.ifBlank { CoachPrompt.DEFAULT_PERSONA })
     }
+    var imagePrompt by rememberSaveable(ai.imageSystemPrompt) {
+        mutableStateOf(ai.imageSystemPrompt.ifBlank { CoachPrompt.DEFAULT_IMAGE_INSTRUCTION })
+    }
     var includeStats by rememberSaveable(ai.includeStats) { mutableStateOf(ai.includeStats) }
     var checkups by rememberSaveable(ai.checkupsEnabled) { mutableStateOf(ai.checkupsEnabled) }
     var interval by rememberSaveable(ai.checkupIntervalMinutes) { mutableIntStateOf(ai.checkupIntervalMinutes) }
@@ -90,6 +93,18 @@ internal fun CoachSettingsSheet(
                 onClick = { prompt = CoachPrompt.DEFAULT_PERSONA },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.coach_reset_prompt)) }
+
+            OutlinedTextField(
+                value = imagePrompt,
+                onValueChange = { imagePrompt = it.take(2_000) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+                label = { Text(stringResource(R.string.coach_image_system_prompt)) },
+                supportingText = { Text(stringResource(R.string.coach_image_system_prompt_support)) },
+            )
+            OutlinedButton(
+                onClick = { imagePrompt = CoachPrompt.DEFAULT_IMAGE_INSTRUCTION },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.coach_reset_image_prompt)) }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -132,6 +147,9 @@ internal fun CoachSettingsSheet(
                     val persona = prompt.trim()
                     viewModel.saveCoachBehaviour(
                         systemPrompt = if (persona == CoachPrompt.DEFAULT_PERSONA) "" else persona,
+                        imageSystemPrompt = if (
+                            imagePrompt.trim() == CoachPrompt.DEFAULT_IMAGE_INSTRUCTION
+                        ) "" else imagePrompt.trim(),
                         includeStats = includeStats,
                         checkupsEnabled = checkups,
                         checkupIntervalMinutes = interval,
