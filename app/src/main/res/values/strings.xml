@@ -296,6 +296,7 @@
     <string name="widget_saved">%1$s saved</string>
     <string name="widget_avoided">%1$d avoided</string>
     <string name="widget_streak">%1$d-day streak</string>
+    <string name="widget_steps">%1$s steps</string>
 
     <string name="quit_health_title">Body recovery</string>
     <string name="quit_next_milestone">Next: %1$s</string>
@@ -355,6 +356,8 @@
     <string name="widget_show_stats">Stat pills</string>
     <string name="widget_show_quote">Coach line</string>
     <string name="widget_show_streak">Zero-day streak</string>
+    <string name="widget_show_steps">Steps walked today</string>
+    <string name="widget_show_steps_body">Only appears while step counting is on in Plan.</string>
     <string name="widget_show_actions">Talk and Log buttons</string>
     <string name="widget_pulse_title">Animated wait indicator</string>
     <string name="widget_pulse_body">A sweep under the countdown that keeps moving with Pace closed.</string>

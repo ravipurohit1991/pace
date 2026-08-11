@@ -51,10 +51,12 @@ import com.pace.reduction.R
 import com.pace.reduction.core.designsystem.widgetBackdrop
 import com.pace.reduction.data.datastore.pacePreferencesDataStore
 import com.pace.reduction.data.datastore.widgetSnapshotDataStore
+import com.pace.reduction.domain.WidgetStatFit
 import com.pace.reduction.domain.model.AccentPalette
 import com.pace.reduction.domain.model.WidgetBackground
 import com.pace.reduction.domain.model.WidgetSettings
 import com.pace.reduction.domain.model.WidgetTick
+import com.pace.reduction.feature.formatStepsCompact
 import com.pace.reduction.proto.AccentPaletteProto
 import com.pace.reduction.proto.PacePreferences
 import com.pace.reduction.proto.WidgetBackgroundProto
@@ -117,7 +119,6 @@ private fun PaceWidgetContent(
 ) {
     val configured = snapshot.localDate.isNotBlank()
     val compact = size.width < 170.dp || size.height < 95.dp
-    val wide = size.width >= 280.dp
     val settings = style.settings
     val canUndo = snapshot.undoLogId.isNotBlank() && snapshot.undoExpiryEpochMs > System.currentTimeMillis()
     val coachIntent = Intent(context, MainActivity::class.java)
@@ -212,28 +213,14 @@ private fun PaceWidgetContent(
 
             if (!compact && settings.showStats) {
                 Spacer(GlanceModifier.height(9.dp))
+                val pills = WidgetStatFit.fit(
+                    labels = statLabels(context, snapshot, settings),
+                    availableDp = (size.width - HORIZONTAL_PADDING * 2).value.toDouble(),
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatPill(
-                        text = context.getString(
-                            R.string.widget_free_for,
-                            shortDuration(snapshot.smokeFreeMinutes),
-                        ),
-                    )
-                    Spacer(GlanceModifier.width(6.dp))
-                    if (snapshot.moneySaved >= 1.0) {
-                        StatPill(
-                            text = context.getString(
-                                R.string.widget_saved,
-                                "${snapshot.moneySaved.toInt()} ${snapshot.currencyCode}",
-                            ),
-                        )
-                    } else {
-                        StatPill(text = context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
-                    }
-                    // The badge count lives in the top-right corner; repeating it here was noise.
-                    if (wide && settings.showStreak && snapshot.zeroDayStreak > 0) {
-                        Spacer(GlanceModifier.width(6.dp))
-                        StatPill(text = context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
+                    pills.forEachIndexed { index, label ->
+                        if (index > 0) Spacer(GlanceModifier.width(6.dp))
+                        StatPill(text = label)
                     }
                 }
             }
@@ -376,6 +363,41 @@ private fun CeilingBar(count: Int, ceiling: Int, size: DpSize) {
                     .background(if (over) OverCeiling else Surface),
             ) {}
         }
+    }
+}
+
+/**
+ * The stat pills, most worth showing first. How many of them actually appear is decided by
+ * [WidgetStatFit] from the widget's width, so a two-cell widget drops the tail rather than clipping
+ * it mid-word.
+ *
+ * Walking sits ahead of the money because step counting is off until the user switches it on:
+ * having done so is a statement that they want the walking counted, whereas the money saved is
+ * already repeated across the Today and Progress screens.
+ */
+private fun statLabels(
+    context: Context,
+    snapshot: WidgetSnapshot,
+    settings: WidgetSettings,
+): List<String> = buildList {
+    add(context.getString(R.string.widget_free_for, shortDuration(snapshot.smokeFreeMinutes)))
+    if (settings.showSteps && snapshot.stepsToday > 0) {
+        val locale = context.resources.configuration.locales[0]
+        add(context.getString(R.string.widget_steps, formatStepsCompact(snapshot.stepsToday, locale)))
+    }
+    if (snapshot.moneySaved >= 1.0) {
+        add(
+            context.getString(
+                R.string.widget_saved,
+                "${snapshot.moneySaved.toInt()} ${snapshot.currencyCode}",
+            ),
+        )
+    } else {
+        add(context.getString(R.string.widget_avoided, snapshot.cigarettesAvoided))
+    }
+    // The badge count lives in the top-right corner; repeating it here was noise.
+    if (settings.showStreak && snapshot.zeroDayStreak > 0) {
+        add(context.getString(R.string.widget_streak, snapshot.zeroDayStreak))
     }
 }
 
@@ -593,6 +615,7 @@ private fun PacePreferences.toStyle(): WidgetStyle = WidgetStyle(
         showActions = !widgetHideActions,
         showCountdown = !widgetHideCountdown,
         showStreak = !widgetHideStreak,
+        showSteps = !widgetHideSteps,
         confirmLog = !widgetSkipLogConfirm,
         livePulse = !widgetDisablePulse,
         tick = when (widgetTick) {
