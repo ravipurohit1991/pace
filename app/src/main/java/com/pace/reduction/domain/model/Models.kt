@@ -38,6 +38,8 @@ data class WidgetSettings(
     val showActions: Boolean = true,
     val showCountdown: Boolean = true,
     val showStreak: Boolean = true,
+    /** Only ever has anything to show while step counting is switched on in Plan. */
+    val showSteps: Boolean = true,
     /** Two taps to log. Off means one tap writes immediately. */
     val confirmLog: Boolean = true,
     /** The animated bar under the countdown — the only thing on a widget that truly moves. */

@@ -133,8 +133,9 @@ no AI key.
 ### A widget worth keeping
 
 Time until your next window as the headline figure, today's count against the ceiling, a proportional
-ceiling meter, clean-stretch and money pills, your badge count, a line that refreshes hourly, and Talk and
-Log actions. It re-renders exactly when a window ends, so the countdown never outlives the wait. At sleep time,
+ceiling meter, clean-stretch and money pills, today's steps when step counting is on, your badge count, a
+line that refreshes hourly, and Talk and Log actions. The pills are fitted to the width the widget actually
+has, so a narrow one drops the last of them rather than clipping it mid-word. It re-renders exactly when a window ends, so the countdown never outlives the wait. At sleep time,
 the widget switches to a neutral rest face with no countdown, count, clean-stretch statistic, quote, or action;
 the normal view returns at wake time.
 

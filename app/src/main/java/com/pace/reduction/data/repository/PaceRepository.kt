@@ -898,6 +898,10 @@ class PaceRepository(
                 .setStepCounterAnchorSet(true)
                 .build()
         }
+        // Only when something was actually walked. Readings arrive on resume and every few hours,
+        // so this is a rare redraw, and without it the home screen would keep yesterday's figure
+        // until the next pacing event happened to refresh it.
+        if (delta > 0) refreshWidgetSnapshot()
     }
 
     /**
@@ -1025,6 +1029,9 @@ class PaceRepository(
             else -> context.getString(R.string.widget_message_default)
         }
         val badges = dao.allAchievements()
+        // Zero when the feature is off, so a widget cannot go on showing a figure the user has
+        // since switched off — the pill is dropped rather than frozen at its last value.
+        val stepsToday = if (plan.stepCountingEnabled) dao.stepsOn(date.toString()) ?: 0L else 0L
         val quit = QuitProgress.calculate(
             now = now,
             zoneId = zone,
@@ -1047,6 +1054,7 @@ class PaceRepository(
                 .setMoneySaved(quit.moneySaved)
                 .setCurrencyCode(plan.currencyCode)
                 .setZeroDayStreak(quit.zeroDayStreak)
+                .setStepsToday(stepsToday)
                 .setGeneratedAtEpochMs(now.toEpochMilli())
                 .setLocalDate(date.toString())
                 .setCountToday(logs.size)
@@ -1280,6 +1288,7 @@ class PaceRepository(
         .setWidgetHideActions(!widget.showActions)
         .setWidgetHideCountdown(!widget.showCountdown)
         .setWidgetHideStreak(!widget.showStreak)
+        .setWidgetHideSteps(!widget.showSteps)
         .setWidgetSkipLogConfirm(!widget.confirmLog)
         .setWidgetDisablePulse(!widget.livePulse)
         .setWidgetTick(widget.tick.toProto())
@@ -1298,6 +1307,7 @@ class PaceRepository(
         showActions = !proto.widgetHideActions,
         showCountdown = !proto.widgetHideCountdown,
         showStreak = !proto.widgetHideStreak,
+        showSteps = !proto.widgetHideSteps,
         confirmLog = !proto.widgetSkipLogConfirm,
         livePulse = !proto.widgetDisablePulse,
         tick = when (proto.widgetTick) {

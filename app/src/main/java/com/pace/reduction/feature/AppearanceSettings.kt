@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.pace.reduction.R
 import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.widgetBackdrop
+import com.pace.reduction.domain.WidgetStatFit
 import com.pace.reduction.domain.model.AccentPalette
 import com.pace.reduction.domain.model.MotionLevel
 import com.pace.reduction.domain.model.PlanSettings
@@ -320,6 +322,12 @@ internal fun WidgetSection(
             onCheckedChange = { onChange(widget.copy(showStreak = it)) },
         )
         SettingSwitch(
+            title = stringResource(R.string.widget_show_steps),
+            body = stringResource(R.string.widget_show_steps_body),
+            checked = widget.showSteps,
+            onCheckedChange = { onChange(widget.copy(showSteps = it)) },
+        )
+        SettingSwitch(
             title = stringResource(R.string.widget_show_quote),
             checked = widget.showQuote,
             onCheckedChange = { onChange(widget.copy(showQuote = it)) },
@@ -509,10 +517,19 @@ private fun WidgetPreview(widget: WidgetSettings, accent: AccentPalette) {
             }
 
             if (widget.showStats) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PreviewPill(stringResource(R.string.widget_free_for, "4h"))
-                    PreviewPill(stringResource(R.string.widget_avoided, 8))
-                    if (widget.showStreak) PreviewPill(stringResource(R.string.widget_streak, 3))
+                // Which pills survive is decided by the same rule the widget uses, so the preview
+                // drops what the home screen would drop at the width it has here.
+                BoxWithConstraints {
+                    val availableDp = maxWidth.value.toDouble()
+                    val labels = buildList {
+                        add(stringResource(R.string.widget_free_for, "4h"))
+                        if (widget.showSteps) add(stringResource(R.string.widget_steps, "3.4k"))
+                        add(stringResource(R.string.widget_avoided, 8))
+                        if (widget.showStreak) add(stringResource(R.string.widget_streak, 3))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WidgetStatFit.fit(labels, availableDp).forEach { PreviewPill(it) }
+                    }
                 }
             }
 

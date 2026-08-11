@@ -126,6 +126,10 @@ interface PaceDao {
     @Query("SELECT * FROM step_days ORDER BY localDate ASC")
     suspend fun allStepDays(): List<StepDayEntity>
 
+    /** Null when the day has no row yet, which is not the same as a day walked with no steps. */
+    @Query("SELECT steps FROM step_days WHERE localDate = :localDate")
+    suspend fun stepsOn(localDate: String): Long?
+
     /**
      * Adds [delta] to a day, creating the row if this is the day's first reading.
      *

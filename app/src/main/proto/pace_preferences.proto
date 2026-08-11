@@ -127,6 +127,7 @@ message PacePreferences {
   bool widget_skip_log_confirm = 69;
   bool widget_disable_pulse = 70;
   WidgetTickProto widget_tick = 71;
+  bool widget_hide_steps = 78;
 
   // Retained for migration; the app now stores one multimodal model in both fields.
   string ollama_vision_model = 72;
@@ -175,6 +176,8 @@ message WidgetSnapshot {
   int64 quote_generated_epoch_ms = 20;
   // Set by the first widget log tap; a second tap before this expires commits it.
   int64 log_armed_until_epoch_ms = 21;
+  // Steps walked today, or 0 when step counting is off — the widget has no database of its own.
+  int64 steps_today = 24;
   // 22 and 23 anchored two system Chronometers. The widget now states its figures in whole
   // minutes, which needs only the totals above, so both are retired rather than left to rot.
   reserved 22, 23;
