@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.pace.reduction.MainActivity
 import com.pace.reduction.PaceApplication
 import com.pace.reduction.R
+import com.pace.reduction.domain.CoachBeat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -29,6 +30,11 @@ object PaceNotifications {
     private const val LOCATION_ID = 2002
     private const val NUDGE_ID = 2003
     private const val CHECKUP_ID = 2004
+
+    /** One id per [CoachBeat], so the three agenda beats never overwrite one another. */
+    private const val AGENDA_ID_BASE = 2100
+    private const val AGENDA_REQUEST_BASE = 30
+    private const val AGENDA_DISMISS_OFFSET = 10
     private const val SUPPORT_GROUP = "pace_support"
 
     fun createChannels(context: Context) {
@@ -164,6 +170,72 @@ object PaceNotifications {
         )
     }
 
+    /**
+     * One beat of the coach's daily agenda.
+     *
+     * Each beat gets its own notification id, so the evening line does not quietly replace a morning
+     * plan that was never read. An invitation to move opens straight into the session it named;
+     * everything else opens the chat, where the same text is already waiting as the last message.
+     */
+    @SuppressLint("MissingPermission")
+    fun postCoachBeat(
+        context: Context,
+        beat: CoachBeat,
+        message: String,
+        moveSessionId: String? = null,
+        privateOnLockScreen: Boolean = true,
+    ) {
+        if (!canPost(context) || message.isBlank()) return
+        val toMove = beat == CoachBeat.MOVE_INVITE && moveSessionId != null
+        val intent = Intent(context, MainActivity::class.java)
+            .putExtra(
+                MainActivity.EXTRA_DESTINATION,
+                if (toMove) MainActivity.DESTINATION_TOOLKIT else MainActivity.DESTINATION_COACH,
+            )
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .apply { if (toMove) putExtra(MainActivity.EXTRA_MOVE_SESSION, moveSessionId) }
+        val requestCode = AGENDA_REQUEST_BASE + beat.ordinal
+        val openPending = PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismissPending = PendingIntent.getBroadcast(
+            context,
+            requestCode + AGENDA_DISMISS_OFFSET,
+            Intent(context, NotificationDismissReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val title = context.getString(
+            when (beat) {
+                CoachBeat.MORNING_PLAN -> R.string.notification_morning_title
+                CoachBeat.MOVE_INVITE -> R.string.notification_move_title
+                CoachBeat.EVENING_REFLECT -> R.string.notification_evening_title
+            },
+        )
+        val action = context.getString(
+            if (toMove) R.string.notification_move_action else R.string.notification_nudge_action,
+        )
+        NotificationManagerCompat.from(context).notify(
+            AGENDA_ID_BASE + beat.ordinal,
+            NotificationCompat.Builder(context, CHECKINS)
+                .setSmallIcon(R.drawable.ic_pace_notification)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setContentIntent(openPending)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setGroup(SUPPORT_GROUP)
+                .setOnlyAlertOnce(true)
+                .addAction(0, action, openPending)
+                .addAction(0, context.getString(R.string.dismiss), dismissPending)
+                .applyLockScreenPrivacy(context, privateOnLockScreen)
+                .build(),
+        )
+    }
+
     @SuppressLint("MissingPermission")
     fun postLocationCue(context: Context) {
         if (!canPost(context)) return
@@ -196,6 +268,7 @@ object PaceNotifications {
             cancel(NUDGE_ID)
             cancel(CHECKUP_ID)
             cancel(LOCATION_ID)
+            CoachBeat.entries.forEach { cancel(AGENDA_ID_BASE + it.ordinal) }
         }
     }
 

@@ -49,9 +49,17 @@ import com.pace.reduction.domain.model.WidgetSettings
 import com.pace.reduction.domain.model.WidgetTick
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.AdaptiveSpacing
+import com.pace.reduction.domain.AgendaState
 import com.pace.reduction.domain.BadgeEngine
+import com.pace.reduction.domain.CoachAgenda
+import com.pace.reduction.domain.CoachBeat
 import com.pace.reduction.domain.CoachContext
 import com.pace.reduction.domain.DailyProgress
+import com.pace.reduction.domain.MoveCatalogue
+import com.pace.reduction.domain.MoveSession
+import com.pace.reduction.domain.UrgePattern
+import com.pace.reduction.domain.UrgePatterns
+import com.pace.reduction.domain.WithdrawalTimeline
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.QuitProgress
 import com.pace.reduction.domain.StepCalculator
@@ -613,8 +621,20 @@ class PaceRepository(
         PaceWidget().updateAll(context)
     }
 
+    /**
+     * What the day's own history says about when it is hardest.
+     *
+     * Read straight off the log timestamps rather than asked for, because the stretch somebody
+     * dreads and the stretch they actually reach in are frequently not the same one.
+     */
+    suspend fun urgePattern(): UrgePattern = UrgePatterns.analyse(
+        today = clock.instant().atZone(zoneProvider()).toLocalDate(),
+        zoneId = zoneProvider(),
+        logs = dao.allLogs().map { it.toDomain() },
+    )
+
     /** Builds the grounded snapshot the coach is allowed to reason about. */
-    suspend fun coachContext(): CoachContext {
+    suspend fun coachContext(suggestedMove: String? = null): CoachContext {
         val now = clock.instant()
         val zone = zoneProvider()
         val plan = settings.first()
@@ -632,6 +652,12 @@ class PaceRepository(
         )
         val lastLog = logs.filter { it.reversedAt == null }.maxByOrNull { it.occurredAt }?.occurredAt
         val zoned = now.atZone(zone)
+        val minuteOfDay = zoned.hour * 60 + zoned.minute
+        val pattern = UrgePatterns.analyse(zoned.toLocalDate(), zone, logs)
+        val withdrawal = WithdrawalTimeline.calculate(quit.smokeFreeDuration)
+        val moves = sessions.filter { it.tool.startsWith(MOVE_TOOL_PREFIX) && it.completed }
+        val movesToday = moves.count { it.startedAt.atZone(zone).toLocalDate() == zoned.toLocalDate() }
+        val stepDays = if (plan.stepCountingEnabled) dao.allStepDays() else emptyList()
         return CoachContext(
             countToday = today.count,
             ceiling = today.ceiling,
@@ -651,14 +677,70 @@ class PaceRepository(
                 .take(3)
                 .map { it.key.replace('_', ' ') },
             personalReason = plan.personalReason,
+            personalValues = plan.personalValues,
             tone = plan.coachingTone.name,
             localTime = zoned.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
             dayOfWeek = zoned.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH),
             partOfDay = partOfDay(zoned.hour),
             timeZone = zone.id,
-            inHighUrgeWindow = isInHighUrgeWindow(plan, zoned.hour * 60 + zoned.minute),
+            inHighUrgeWindow = isInHighUrgeWindow(plan, minuteOfDay),
+            learnedPeakWindow = pattern.window?.let { "${clockOf(it.startMinutes)} and ${clockOf(it.endMinutes)}" },
+            inLearnedPeak = pattern.window?.let {
+                UrgePatterns.contains(it.startMinutes, it.endMinutes, minuteOfDay)
+            } ?: false,
+            bodyStage = bodyStage(withdrawal),
+            minutesUntilSleep = wrappedMinutes(plan.sleepMinutes - minuteOfDay).toLong(),
+            minutesSinceWake = wrappedMinutes(minuteOfDay - plan.wakeMinutes).toLong(),
+            stepsToday = stepDays.firstOrNull { it.localDate == zoned.toLocalDate().toString() }?.steps ?: 0L,
+            usualStepsPerDay = stepDays.filter { it.steps > 0 }
+                .takeLast(14)
+                .takeIf { it.isNotEmpty() }
+                ?.let { days -> days.sumOf { it.steps } / days.size }
+                ?: 0L,
+            movesToday = movesToday,
+            minutesSinceLastMove = moves.maxByOrNull { it.startedAt }
+                ?.let { java.time.Duration.between(it.startedAt, now).toMinutes() },
+            weeklyTrend = weeklyTrend(logs, zone, zoned.toLocalDate()),
+            suggestedMove = suggestedMove,
         )
     }
+
+    /**
+     * Neutral phrasing for where the body is in the current stretch.
+     *
+     * Every word here reaches the model, so none of them may name the substance or the feeling —
+     * the shape of the curve is the useful part, and it survives being described as a stretch.
+     */
+    private fun bodyStage(status: com.pace.reduction.domain.WithdrawalStatus): String? = when {
+        !status.relevant -> null
+        !status.peakPassed -> "${status.hoursIn} hours in. Stretches like this are usually at their " +
+            "roughest across the second and third day, then ease — about ${status.hoursToPeakEnd} " +
+            "hours until that turn. Do not explain this to them unless they ask."
+        status.hoursIn < 7 * 24 -> "${status.hoursIn} hours in, past the roughest part of the curve."
+        else -> "${status.hoursIn / 24} days in; the hard edge of this is behind them."
+    }
+
+    /** This week's moments against last week's, as a phrase rather than a number to read out. */
+    private fun weeklyTrend(logs: List<CigaretteLog>, zone: ZoneId, today: LocalDate): String? {
+        val active = logs.filter { it.reversedAt == null }
+        fun countBetween(from: LocalDate, until: LocalDate) = active.count {
+            val date = it.occurredAt.atZone(zone).toLocalDate()
+            !date.isBefore(from) && date.isBefore(until)
+        }
+        val thisWeek = countBetween(today.minusDays(6), today.plusDays(1))
+        val lastWeek = countBetween(today.minusDays(13), today.minusDays(6))
+        if (lastWeek == 0) return null
+        val change = thisWeek - lastWeek
+        return when {
+            change <= -2 -> "clearly fewer than last week ($thisWeek against $lastWeek)"
+            change >= 2 -> "more than last week ($thisWeek against $lastWeek) — do not scold them for it"
+            else -> "about level with last week ($thisWeek against $lastWeek)"
+        }
+    }
+
+    private fun clockOf(minutes: Int): String = "%02d:%02d".format(minutes / 60 % 24, minutes % 60)
+
+    private fun wrappedMinutes(minutes: Int): Int = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60)
 
     /**
      * One-time import of an owner's pre-existing history and key into a private build.
@@ -795,6 +877,7 @@ class PaceRepository(
                 notificationPrivate = plan.notificationPrivate,
                 hapticsEnabled = plan.hapticsEnabled,
                 themeMode = plan.themeMode.name,
+                personalValues = plan.personalValues,
             ),
             logs = dao.allLogs().map {
                 LogBackup(it.id, it.occurredAtEpochMs, it.recordedAtEpochMs, it.source, it.note, it.reversedAtEpochMs, it.reversalReason)
@@ -940,6 +1023,8 @@ class PaceRepository(
         require(plan.weekendWakeMinutes in 0..1439 && plan.reductionStep in 1..5 && plan.reviewIntervalDays in 7..28)
         require(plan.cigarettesPerPack in 1..100 && plan.pricePerPack >= 0 && plan.rewardTarget >= 0)
         require(plan.currencyCode.length == 3 && plan.personalReason.length <= 500 && plan.rewardName.length <= 100)
+        require(plan.personalValues.size <= PlanSettings.MAX_VALUES)
+        require(plan.personalValues.all { it.length <= PlanSettings.MAX_VALUE_CHARS })
         require(runCatching { CoachingTone.valueOf(plan.coachingTone) }.isSuccess)
         require(runCatching { ReminderIntensity.valueOf(plan.reminderIntensity) }.isSuccess)
         require(runCatching { ThemeMode.valueOf(plan.themeMode) }.isSuccess)
@@ -987,6 +1072,7 @@ class PaceRepository(
         notificationPrivate = notificationPrivate,
         hapticsEnabled = hapticsEnabled,
         themeMode = ThemeMode.valueOf(themeMode),
+        personalValues = personalValues,
     )
 
     suspend fun refreshWidgetSnapshot(undoLogId: String = "") {
@@ -1180,6 +1266,77 @@ class PaceRepository(
         return claimed
     }
 
+    /**
+     * Claims the next beat of the coach's own daily agenda, or null when nothing is due.
+     *
+     * Like the other claims this both decides and records in one preferences write, so two workers
+     * waking together cannot both send the morning message. Unlike them it carries no shared daily
+     * budget: the agenda is rate-limited by its own shape — one morning, one evening, and a capped
+     * number of invitations to move with a hard gap between them.
+     */
+    suspend fun claimCoachBeat(): CoachBeat? {
+        val ai = aiSettings.first()
+        if (!ai.isReady) return null
+        val plan = settings.first()
+        if (!plan.onboardingCompleted || !plan.autoCoachEnabled) return null
+        if (isQuietHoursNow()) return null
+
+        val now = clock.instant()
+        val zoned = now.atZone(zoneProvider())
+        val today = zoned.toLocalDate()
+        var claimed: CoachBeat? = null
+        preferencesStore.updateData { current ->
+            if (now.toEpochMilli() < current.notificationDismissedUntilEpochMs) return@updateData current
+            val beat = CoachAgenda.due(
+                now = zoned,
+                wakeMinutes = plan.wakeMinutes,
+                sleepMinutes = plan.sleepMinutes,
+                workStartMinutes = plan.workStartMinutes,
+                workEndMinutes = plan.workEndMinutes,
+                state = AgendaState(
+                    morningSentOn = current.agendaMorningDate.toLocalDateOrNull(),
+                    eveningSentOn = current.agendaEveningDate.toLocalDateOrNull(),
+                    moveInvitesOn = current.agendaMoveDate.toLocalDateOrNull(),
+                    moveInvitesToday = current.agendaMoveCount,
+                    lastMoveInviteAt = current.agendaLastMoveEpochMs.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
+                ),
+                maxMoveInvites = plan.moveInvitesPerDay,
+            ) ?: return@updateData current
+            claimed = beat
+            when (beat) {
+                CoachBeat.MORNING_PLAN -> current.toBuilder().setAgendaMorningDate(today.toString()).build()
+                CoachBeat.EVENING_REFLECT -> current.toBuilder().setAgendaEveningDate(today.toString()).build()
+                CoachBeat.MOVE_INVITE -> {
+                    val already = if (current.agendaMoveDate == today.toString()) current.agendaMoveCount else 0
+                    current.toBuilder()
+                        .setAgendaMoveDate(today.toString())
+                        .setAgendaMoveCount(already + 1)
+                        .setAgendaLastMoveEpochMs(now.toEpochMilli())
+                        .build()
+                }
+            }
+        }
+        return claimed
+    }
+
+    /** The session the agenda should invite them into right now, given the hour and their walking. */
+    suspend fun suggestedMoveSession(): MoveSession {
+        val plan = settings.first()
+        val zoned = clock.instant().atZone(zoneProvider())
+        val stepDays = if (plan.stepCountingEnabled) dao.allStepDays() else emptyList()
+        val recorded = stepDays.filter { it.steps > 0 }.takeLast(14)
+        return MoveCatalogue.suggestFor(
+            minuteOfDay = zoned.hour * 60 + zoned.minute,
+            wakeMinutes = plan.wakeMinutes,
+            sleepMinutes = plan.sleepMinutes,
+            stepsToday = stepDays.firstOrNull { it.localDate == zoned.toLocalDate().toString() }?.steps ?: 0L,
+            averageSteps = if (recorded.isEmpty()) 0.0 else recorded.sumOf { it.steps }.toDouble() / recorded.size,
+        )
+    }
+
+    private fun String.toLocalDateOrNull(): LocalDate? =
+        takeIf(String::isNotBlank)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
     suspend fun dismissCoachingNotifications() {
         preferencesStore.updateData { current ->
             current.toBuilder()
@@ -1272,6 +1429,14 @@ class PaceRepository(
         .setHighUrgeWindowEnabled(plan.highUrgeWindowEnabled)
         .setHighUrgeStartMinutes(plan.highUrgeStartMinutes.coerceIn(0, 1439))
         .setHighUrgeEndMinutes(plan.highUrgeEndMinutes.coerceIn(0, 1439))
+        .clearPersonalValues()
+        .addAllPersonalValues(plan.personalValues.toStoredValues())
+        .setAutoCoachDisabled(!plan.autoCoachEnabled)
+        .setWorkStartMinutes(plan.workStartMinutes.coerceIn(0, 1439))
+        .setWorkEndMinutes(plan.workEndMinutes.coerceIn(0, 1439))
+        // Never zero: proto3 cannot tell a stored 0 from an untouched field, and the off switch for
+        // invitations is the agenda toggle rather than a count of none.
+        .setMoveInvitesPerDay(plan.moveInvitesPerDay.coerceIn(1, 6))
         .setAccentPalette(plan.accentPalette.toProto())
         .setDynamicColor(plan.dynamicColor)
         .setAmoledDark(plan.amoledDark)
@@ -1365,6 +1530,12 @@ class PaceRepository(
         highUrgeWindowEnabled = proto.highUrgeWindowEnabled,
         highUrgeStartMinutes = proto.highUrgeStartMinutes.takeIf { it > 0 } ?: (15 * 60),
         highUrgeEndMinutes = proto.highUrgeEndMinutes.takeIf { it > 0 } ?: (18 * 60),
+        personalValues = proto.personalValuesList.toList(),
+        // Inverted in storage so an existing install that never saw this setting gets the agenda.
+        autoCoachEnabled = !proto.autoCoachDisabled,
+        workStartMinutes = proto.workStartMinutes.takeIf { it > 0 } ?: (9 * 60),
+        workEndMinutes = proto.workEndMinutes.takeIf { it > 0 } ?: (17 * 60),
+        moveInvitesPerDay = proto.moveInvitesPerDay.takeIf { it > 0 } ?: 2,
         accentPalette = when (proto.accentPalette) {
             AccentPaletteProto.ACCENT_PALETTE_OCEAN -> AccentPalette.OCEAN
             AccentPaletteProto.ACCENT_PALETTE_EMBER -> AccentPalette.EMBER
@@ -1529,6 +1700,14 @@ class PaceRepository(
     private fun Set<String>.toTagsJson(): String = sorted()
         .joinToString(",", prefix = "[", postfix = "]") { "\"${it.replace("\"", "")}\"" }
 
+    /** Trimmed, de-duplicated and capped, so nothing unbounded reaches the preferences store. */
+    private fun List<String>.toStoredValues(): List<String> = asSequence()
+        .map { it.trim().replace(Regex("\\s+"), " ").take(PlanSettings.MAX_VALUE_CHARS) }
+        .filter(String::isNotEmpty)
+        .distinct()
+        .take(PlanSettings.MAX_VALUES)
+        .toList()
+
 
     private fun CoachMessageEntity.toDomain() = CoachMessage(
         id = id,
@@ -1537,19 +1716,22 @@ class PaceRepository(
         content = content,
     )
 
-    private companion object {
-        const val MAX_IMPORT_CHARS = 1_000_000
-        const val MAX_API_KEY_CHARS = 256
-        const val MAX_COACH_MESSAGE_CHARS = 4_000
-        const val MAX_SYSTEM_PROMPT_CHARS = 2_000
+    companion object {
+        /** Marks an urge session as a finished movement session: "MOVE:walk_reset". */
+        const val MOVE_TOOL_PREFIX = "MOVE:"
 
-        const val QUOTE_REFRESH_MS = 60 * 60 * 1_000L
-        const val MAX_WIDGET_QUOTE_CHARS = 90
-        const val LOG_ARM_WINDOW_MS = 8_000L
+        private const val MAX_IMPORT_CHARS = 1_000_000
+        private const val MAX_API_KEY_CHARS = 256
+        private const val MAX_COACH_MESSAGE_CHARS = 4_000
+        private const val MAX_SYSTEM_PROMPT_CHARS = 2_000
+
+        private const val QUOTE_REFRESH_MS = 60 * 60 * 1_000L
+        private const val MAX_WIDGET_QUOTE_CHARS = 90
+        private const val LOG_ARM_WINDOW_MS = 8_000L
 
         /** Fire a nudge when the next planned window is this close. */
-        const val NUDGE_LEAD_MINUTES = 20L
-        const val NUDGE_DAILY_MAXIMUM = 4
-        val RETIRED_VISION_MODELS = setOf("gemma3:27b", "qwen3-vl:235b")
+        private const val NUDGE_LEAD_MINUTES = 20L
+        private const val NUDGE_DAILY_MAXIMUM = 4
+        private val RETIRED_VISION_MODELS = setOf("gemma3:27b", "qwen3-vl:235b")
     }
 }

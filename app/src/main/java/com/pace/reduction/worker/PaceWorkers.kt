@@ -9,8 +9,11 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.pace.reduction.PaceApplication
+import com.pace.reduction.R
 import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.core.notifications.PaceNotifications
+import com.pace.reduction.domain.CoachBeat
+import com.pace.reduction.feature.moveTitleRes
 import java.time.Duration
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
@@ -92,6 +95,43 @@ class CoachCheckupWorker(context: Context, parameters: WorkerParameters) : Corou
     }.fold({ Result.success() }, { Result.retry() })
 }
 
+/**
+ * The coach's own daily agenda: a plan in the morning, invitations to move through the working day,
+ * and one line in the evening.
+ *
+ * Unlike the nudge and the check-in, whatever it writes is also appended to the chat, so opening the
+ * notification lands in a conversation that has already started rather than an empty composer.
+ */
+class CoachAgendaWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result = runCatching {
+        if (!PaceNotifications.canPost(applicationContext)) return@runCatching
+        val repository = applicationContext.repository()
+        val beat = repository.claimCoachBeat() ?: return@runCatching
+        val session = if (beat == CoachBeat.MOVE_INVITE) repository.suggestedMoveSession() else null
+        val moveTitle = session?.let { applicationContext.getString(moveTitleRes(it.id)) }
+        val message = runCatching {
+            applicationContext.coachService().agendaMessage(beat, moveTitle)
+        }.getOrDefault("")
+        val text = message.ifBlank { applicationContext.getString(fallbackFor(beat)) }
+        // Kept in the chat so the thread reads as one ongoing conversation rather than a series of
+        // notifications the coach has no memory of having sent.
+        repository.appendCoachMessage("assistant", text)
+        PaceNotifications.postCoachBeat(
+            context = applicationContext,
+            beat = beat,
+            message = text,
+            moveSessionId = session?.id,
+            privateOnLockScreen = repository.notificationsArePrivate(),
+        )
+    }.fold({ Result.success() }, { Result.retry() })
+
+    private fun fallbackFor(beat: CoachBeat): Int = when (beat) {
+        CoachBeat.MORNING_PLAN -> R.string.agenda_morning_fallback
+        CoachBeat.MOVE_INVITE -> R.string.agenda_move_fallback
+        CoachBeat.EVENING_REFLECT -> R.string.agenda_evening_fallback
+    }
+}
+
 /** Keeps a fresh line on the home screen, replaced about once an hour. */
 class WidgetQuoteWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = runCatching {
@@ -159,6 +199,20 @@ object PaceWorkScheduler {
             "pace-coach-checkup",
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<CoachCheckupWorker>(30, TimeUnit.MINUTES)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .addTag(TAG)
+                .build(),
+        )
+        // Half-hourly: the agenda's own windows are the rate limit, so this only has to wake often
+        // enough that a morning message does not arrive at lunchtime.
+        workManager.enqueueUniquePeriodicWork(
+            "pace-coach-agenda",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<CoachAgendaWorker>(30, TimeUnit.MINUTES)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)

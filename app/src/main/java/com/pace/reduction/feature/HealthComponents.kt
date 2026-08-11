@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -19,12 +20,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +41,8 @@ import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.pulseAlpha
 import com.pace.reduction.domain.QuitMetrics
 import com.pace.reduction.domain.RecoveryMilestone
+import com.pace.reduction.domain.WithdrawalStatus
+import com.pace.reduction.domain.WithdrawalTimeline
 import java.time.Duration
 
 /**
@@ -290,6 +295,158 @@ internal fun RecoveryTimeline(quit: QuitMetrics) {
         }
     }
 }
+
+/**
+ * The other half of the recovery ladder.
+ *
+ * [RecoveryTimeline] says what is being won and reaches out ten years. This says what the next few
+ * days cost and then retires itself after a month. Both matter, and only one of them is the reason
+ * people give up in the first seventy-two hours: somebody who believes it climbs forever has no
+ * reason to keep waiting, and the single most useful fact in cessation guidance is that the summit
+ * is the second and third day and it is downhill from there.
+ */
+@Composable
+internal fun WithdrawalCard(
+    status: WithdrawalStatus,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    if (!status.relevant) return
+    val current = status.current ?: return
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(stringResource(R.string.withdrawal_title), style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(withdrawalPhaseLabel(current.id)), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(withdrawalPhaseBody(current.id)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            WithdrawalCurve(hoursIn = status.hoursIn)
+            Text(
+                text = if (status.peakPassed) {
+                    stringResource(R.string.withdrawal_peak_passed)
+                } else {
+                    stringResource(R.string.withdrawal_peak_ahead, status.hoursToPeakEnd)
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (!compact) {
+                val reached = MaterialTheme.colorScheme.primary
+                val pending = MaterialTheme.colorScheme.outlineVariant
+                status.phases.filter { it.fromHours < WithdrawalTimeline.RELEVANT_HOURS }.forEach { phase ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Canvas(Modifier.size(8.dp)) {
+                            drawCircle(color = if (phase.reached) reached else pending)
+                        }
+                        Text(
+                            stringResource(
+                                R.string.withdrawal_phase_row,
+                                withdrawalWindow(phase.fromHours),
+                                stringResource(withdrawalPhaseLabel(phase.id)),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (phase.current) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (phase.reached) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.padding(start = 10.dp),
+                        )
+                    }
+                }
+                Text(
+                    stringResource(R.string.withdrawal_source),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One hill, with a dot on it.
+ *
+ * The curve is drawn from the same domain function the phases come from, so where the marker sits
+ * and what the text says can never disagree. Its whole job is to be a shape with a downhill side.
+ */
+@Composable
+private fun WithdrawalCurve(hoursIn: Long) {
+    val line = MaterialTheme.colorScheme.primary
+    val fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val samples = remember { WithdrawalTimeline.curve(SAMPLES) }
+    val markerAt = (hoursIn.toFloat() / WithdrawalTimeline.CURVE_HOURS).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(76.dp),
+    ) {
+        val stepX = size.width / (samples.size - 1)
+        fun yFor(value: Float) = size.height - value * (size.height - 6.dp.toPx()) - 3.dp.toPx()
+        val path = Path().apply {
+            moveTo(0f, yFor(samples.first()))
+            samples.forEachIndexed { index, value -> lineTo(index * stepX, yFor(value)) }
+        }
+        val area = Path().apply {
+            addPath(path)
+            lineTo(size.width, size.height)
+            lineTo(0f, size.height)
+            close()
+        }
+        drawPath(area, fill)
+        drawPath(path, line, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+        val markerX = markerAt * size.width
+        val markerY = yFor(WithdrawalTimeline.intensityAt(markerAt * WithdrawalTimeline.CURVE_HOURS))
+        drawLine(
+            color = line.copy(alpha = 0.4f),
+            start = Offset(markerX, markerY),
+            end = Offset(markerX, size.height),
+            strokeWidth = 1.dp.toPx(),
+        )
+        drawCircle(color = line, radius = 5.dp.toPx(), center = Offset(markerX, markerY))
+    }
+}
+
+@Composable
+private fun withdrawalPhaseLabel(id: String): Int = when (id) {
+    "settling" -> R.string.withdrawal_settling
+    "climbing" -> R.string.withdrawal_climbing
+    "peak" -> R.string.withdrawal_peak
+    "turning" -> R.string.withdrawal_turning
+    "easing" -> R.string.withdrawal_easing
+    "fading" -> R.string.withdrawal_fading
+    else -> R.string.withdrawal_clear
+}
+
+@Composable
+private fun withdrawalPhaseBody(id: String): Int = when (id) {
+    "settling" -> R.string.withdrawal_settling_body
+    "climbing" -> R.string.withdrawal_climbing_body
+    "peak" -> R.string.withdrawal_peak_body
+    "turning" -> R.string.withdrawal_turning_body
+    "easing" -> R.string.withdrawal_easing_body
+    "fading" -> R.string.withdrawal_fading_body
+    else -> R.string.withdrawal_clear_body
+}
+
+private fun withdrawalWindow(hours: Long): String = when {
+    hours < 24 -> "${hours}h"
+    else -> plural(hours / 24, "day")
+}
+
+/** Enough to read as a curve, few enough to build on every recomposition without thinking twice. */
+private const val SAMPLES = 40
 
 @Composable
 internal fun milestoneLabel(id: String): String = stringResource(

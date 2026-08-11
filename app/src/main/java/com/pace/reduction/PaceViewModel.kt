@@ -22,6 +22,11 @@ import com.pace.reduction.domain.StepCalculator
 import com.pace.reduction.domain.StepDay
 import com.pace.reduction.domain.StepMetrics
 import com.pace.reduction.domain.SpacingProgress
+import com.pace.reduction.domain.UrgePattern
+import com.pace.reduction.domain.UrgePatterns
+import com.pace.reduction.domain.WithdrawalStatus
+import com.pace.reduction.domain.WithdrawalTimeline
+import com.pace.reduction.data.repository.PaceRepository.Companion.MOVE_TOOL_PREFIX
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
 import com.pace.reduction.domain.model.AiSettings
@@ -73,6 +78,10 @@ data class PaceUiState(
     val ai: AiSettings = AiSettings(),
     val coachMessages: List<CoachMessage> = emptyList(),
     val steps: StepMetrics = StepMetrics(),
+    /** What the log timestamps say about when the day is hardest, recomputed with the history. */
+    val urgePattern: UrgePattern = UrgePattern(),
+    /** Where the body is in the current clean stretch. Retires itself after a month. */
+    val withdrawal: WithdrawalStatus? = null,
     val now: Instant = Instant.now(),
     val loading: Boolean = true,
 )
@@ -269,6 +278,12 @@ class PaceViewModel(
             ai = ai.settings,
             coachMessages = ai.messages,
             steps = steps,
+            urgePattern = UrgePatterns.analyse(
+                today = core.now.atZone(zone).toLocalDate(),
+                zoneId = zone,
+                logs = core.logs,
+            ),
+            withdrawal = WithdrawalTimeline.calculate(quit.smokeFreeDuration),
             now = core.now,
             loading = false,
         )
@@ -396,6 +411,39 @@ class PaceViewModel(
             repository.saveCompletedTool(tool, urgeBefore, urgeAfter, triggers, note, smokedAfter, externalRef)
             _events.emit(PaceEvent.CheckInSaved)
         }
+    }
+
+    /**
+     * The row a finished movement session was written to, so an optional after-rating can complete
+     * it instead of writing a second session.
+     */
+    private val _lastMoveSessionId = MutableStateFlow<String?>(null)
+
+    /**
+     * Records a finished movement session.
+     *
+     * The before/after ratings are the point rather than decoration: these are the first tools in
+     * the app that can show someone their own number falling, and a session with both ends recorded
+     * is the only evidence that the walk did anything.
+     */
+    fun saveCompletedMove(sessionId: String, urgeBefore: Int?, steps: Long) {
+        viewModelScope.launch {
+            _lastMoveSessionId.value = repository.saveCompletedTool(
+                tool = MOVE_TOOL_PREFIX + sessionId,
+                urgeBefore = urgeBefore,
+                urgeAfter = null,
+                triggerTags = emptySet(),
+                note = if (steps > 0) "steps=$steps" else "",
+                smokedAfter = null,
+            )
+            _events.emit(PaceEvent.CheckInSaved)
+        }
+    }
+
+    /** Fills in how the last movement session ended. A no-op if nothing was recorded to fill in. */
+    fun rateLastMove(urgeAfter: Int) {
+        val sessionId = _lastMoveSessionId.value ?: return
+        viewModelScope.launch { repository.finishUrgeOutcome(sessionId, urgeAfter, null) }
     }
 
     fun sendCoachMessage(text: String, imageBytes: ByteArray? = null) {

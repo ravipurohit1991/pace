@@ -67,6 +67,7 @@ import com.pace.reduction.R
 import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.breathe
 import com.pace.reduction.core.network.SafeLinks
+import com.pace.reduction.domain.MoveCatalogue
 import java.time.Duration
 import kotlinx.coroutines.delay
 
@@ -75,8 +76,12 @@ internal fun EnhancedToolkitScreen(
     uiState: PaceUiState,
     viewModel: PaceViewModel,
     onOpenSettings: () -> Unit,
+    requestedMoveSession: String? = null,
 ) {
     val coach by viewModel.coachState.collectAsStateWithLifecycle()
+    // An invitation to move opens the session it named, rather than dropping the user on a shelf to
+    // find it again — the ask was already made and answered once.
+    var activeMove by rememberSaveable { mutableStateOf(requestedMoveSession) }
     var activeTool by rememberSaveable { mutableStateOf<String?>(null) }
     var completedTool by rememberSaveable { mutableStateOf<String?>(null) }
     var externalPending by rememberSaveable { mutableStateOf<String?>(null) }
@@ -135,6 +140,11 @@ internal fun EnhancedToolkitScreen(
         activeTool = null
     }
 
+    val move = activeMove?.let(MoveCatalogue::byId)
+    // The pedometer's running total, or null when there is nothing to difference against. A walk
+    // still works untracked; it just cannot show its own distance.
+    val stepsToday = uiState.steps.takeIf { it.enabled && it.permissionGranted }?.todaySteps
+
     PaceScreen(
         title = stringResource(R.string.toolkit_title),
         actions = {
@@ -145,7 +155,24 @@ internal fun EnhancedToolkitScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (activeTool == null) item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
+        if (activeTool == null && move == null) item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
+        if (move != null) {
+            item {
+                MoveSessionTool(
+                    session = move,
+                    hapticsEnabled = uiState.settings.hapticsEnabled,
+                    stepsToday = stepsToday,
+                    onSampleSteps = viewModel::sampleSteps,
+                    onComplete = { urgeBefore, steps ->
+                        viewModel.saveCompletedMove(move.id, urgeBefore, steps)
+                    },
+                    onRateAfter = viewModel::rateLastMove,
+                    onClose = { activeMove = null },
+                )
+            }
+            // A session on screen owns the screen, for the same reason an open tool does.
+            return@PaceScreen
+        }
         // While a tool is open the rescue card only earns its space if a pause is actually
         // running — otherwise it is a second timer competing with the one being used.
         if (activeTool == null || activePause.isActive) {
@@ -212,6 +239,11 @@ internal fun EnhancedToolkitScreen(
                 entries = ToolCatalogue.guided,
                 onOpen = { activeTool = it },
             )
+        }
+        item {
+            // Above the games on purpose. A game passes the time; this is the only shelf here with a
+            // dose-response behind it, and it should not be the one you scroll to find.
+            MoveShelf(sessions = MoveCatalogue.shelf, onOpen = { activeMove = it })
         }
         item {
             ToolShelf(

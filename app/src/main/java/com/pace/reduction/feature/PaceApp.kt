@@ -261,6 +261,12 @@ private fun MainShell(
     viewModel: PaceViewModel,
 ) {
     val activity = LocalActivity.current
+    // Read once, alongside the destination, and cleared for the same reason: a rotation must not
+    // reopen a session the user has already finished and closed.
+    val requestedMove: String? = remember {
+        activity?.intent?.getStringExtra(com.pace.reduction.MainActivity.EXTRA_MOVE_SESSION)
+            .also { activity?.intent?.removeExtra(com.pace.reduction.MainActivity.EXTRA_MOVE_SESSION) }
+    }
     val initialDestination: NavKey = remember {
         val requested = activity?.intent?.getStringExtra(com.pace.reduction.MainActivity.EXTRA_DESTINATION)
         activity?.intent?.removeExtra(com.pace.reduction.MainActivity.EXTRA_DESTINATION)
@@ -382,6 +388,7 @@ private fun MainShell(
                         uiState = uiState,
                         viewModel = viewModel,
                         onOpenSettings = { backStack.add(SettingsDestination) },
+                        requestedMoveSession = requestedMove,
                     )
                 }
                 entry<ProgressDestination> {
@@ -507,10 +514,23 @@ private fun TodayScreen(
             item {
                 NextMilestoneCard(quit, modifier = Modifier.entrance(3))
             }
+            // Only while the curve is still live. Once it is behind them this is a card announcing
+            // that nothing is happening, and the recovery ladder already owns the long view.
+            uiState.withdrawal?.takeIf { it.relevant }?.let { withdrawal ->
+                item { WithdrawalCard(withdrawal, modifier = Modifier.entrance(4), compact = true) }
+            }
         }
         if (!resting) item {
-            SectionCard(modifier = Modifier.entrance(4)) {
+            SectionCard(modifier = Modifier.entrance(5)) {
                 Text(coachingMessage, style = MaterialTheme.typography.titleMedium)
+                // Values first: they are the part somebody can read in the second they have spare,
+                // and the paragraph underneath is for a calmer moment than this one.
+                if (uiState.settings.personalValues.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                    Text(stringResource(R.string.your_values), style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    ValuesChips(uiState.settings.personalValues)
+                }
                 if (uiState.settings.personalReason.isNotBlank()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
                     Text(stringResource(R.string.your_reason), style = MaterialTheme.typography.labelLarge)
@@ -826,6 +846,11 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
     var height by rememberSaveable(settings.heightCentimetres) {
         mutableStateOf(settings.heightCentimetres.takeIf { it > 0 }?.toString() ?: "")
     }
+    var personalValues by rememberSaveable(settings.personalValues) { mutableStateOf(settings.personalValues) }
+    var autoCoach by rememberSaveable(settings.autoCoachEnabled) { mutableStateOf(settings.autoCoachEnabled) }
+    var workStart by rememberSaveable(settings.workStartMinutes) { mutableStateOf(formatMinutes(settings.workStartMinutes)) }
+    var workEnd by rememberSaveable(settings.workEndMinutes) { mutableStateOf(formatMinutes(settings.workEndMinutes)) }
+    var moveInvites by rememberSaveable(settings.moveInvitesPerDay) { mutableStateOf(settings.moveInvitesPerDay.toString()) }
 
     val newCeiling = ceiling.toIntOrNull()
     val parsedWake = parseTime(wake)
@@ -847,7 +872,8 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                 )
             ) &&
         (!highUrgeEnabled || (parseTime(highUrgeStart) != null && parseTime(highUrgeEnd) != null)) &&
-        (height.isBlank() || height.toIntOrNull() in 100..250)
+        (height.isBlank() || height.toIntOrNull() in 100..250) &&
+        (!autoCoach || (parseTime(workStart) != null && parseTime(workEnd) != null && moveInvites.toIntOrNull() in 1..6))
 
     PaceScreen(
         title = stringResource(R.string.plan_title),
@@ -895,6 +921,11 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                                 highUrgeStartMinutes = parseTime(highUrgeStart) ?: settings.highUrgeStartMinutes,
                                 highUrgeEndMinutes = parseTime(highUrgeEnd) ?: settings.highUrgeEndMinutes,
                                 heightCentimetres = height.toIntOrNull()?.takeIf { it in 100..250 } ?: 0,
+                                personalValues = personalValues,
+                                autoCoachEnabled = autoCoach,
+                                workStartMinutes = parseTime(workStart) ?: settings.workStartMinutes,
+                                workEndMinutes = parseTime(workEnd) ?: settings.workEndMinutes,
+                                moveInvitesPerDay = moveInvites.toIntOrNull() ?: settings.moveInvitesPerDay,
                             ),
                         )
                     },
@@ -990,6 +1021,40 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                         )
                     }
                     Switch(checked = highUrgeEnabled, onCheckedChange = { highUrgeEnabled = it })
+                }
+                // Found rather than asked for. The stretch somebody dreads and the stretch their own
+                // timestamps keep landing in are often not the same one, and the app already knows
+                // which is which — so it offers the answer instead of handing over two clock fields.
+                val learned = uiState.urgePattern.window
+                if (learned != null) {
+                    val suggestedStart = formatMinutes(learned.startMinutes)
+                    val suggestedEnd = formatMinutes(learned.endMinutes)
+                    val alreadyApplied = highUrgeEnabled &&
+                        highUrgeStart == suggestedStart &&
+                        highUrgeEnd == suggestedEnd
+                    Text(
+                        stringResource(
+                            R.string.high_urge_learned,
+                            suggestedStart,
+                            suggestedEnd,
+                            (learned.share * 100).toInt(),
+                            uiState.urgePattern.daysCovered,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    if (!alreadyApplied) {
+                        OutlinedButton(
+                            onClick = {
+                                highUrgeStart = suggestedStart
+                                highUrgeEnd = suggestedEnd
+                                highUrgeEnabled = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.high_urge_learned_apply))
+                        }
+                    }
                 }
                 if (highUrgeEnabled) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1107,6 +1172,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
             }
         }
         item { SectionHeader(stringResource(R.string.plan_section_motivation)) }
+        item { ValuesEditor(values = personalValues, onChange = { personalValues = it }) }
         item {
             OutlinedTextField(
                 value = personalReason,
@@ -1184,6 +1250,40 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.haptics), modifier = Modifier.weight(1f))
                     Switch(checked = hapticsEnabled, onCheckedChange = { hapticsEnabled = it })
+                }
+            }
+        }
+        item {
+            SectionCard {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.agenda_title), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.agenda_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = autoCoach, onCheckedChange = { autoCoach = it })
+                }
+                if (autoCoach) {
+                    if (!uiState.ai.isReady) {
+                        // The agenda is the coach talking first; without a key there is nothing to
+                        // talk with, and a switch that silently does nothing is worse than an off one.
+                        Text(
+                            stringResource(R.string.agenda_needs_coach),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ClockField(R.string.agenda_work_from, workStart, { workStart = it }, Modifier.weight(1f))
+                        ClockField(R.string.agenda_work_to, workEnd, { workEnd = it }, Modifier.weight(1f))
+                    }
+                    PlanNumberField(R.string.agenda_move_invites, moveInvites, { moveInvites = it }, 1..6)
                 }
             }
         }
@@ -1276,6 +1376,11 @@ private fun ProgressScreen(
                 onToggle = onToggleSteps,
             )
         }
+        // Above the recovery ladder deliberately: what the next three days cost is the more urgent
+        // of the two questions, and it is the one nobody answers.
+        uiState.withdrawal?.takeIf { it.relevant }?.let { withdrawal ->
+            item { WithdrawalCard(withdrawal) }
+        }
         if (quit != null) {
             item {
                 SectionCard {
@@ -1311,6 +1416,23 @@ private fun ProgressScreen(
                     Text(stringResource(R.string.reward_progress_title), style = MaterialTheme.typography.titleLarge)
                     LinearProgressIndicator(progress = { metrics.rewardProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
                     Text(stringResource(R.string.reward_progress_value, (metrics.rewardProgress * 100).toInt(), uiState.settings.rewardName.ifBlank { stringResource(R.string.your_reward) }))
+                }
+            }
+        }
+        uiState.urgePattern.window?.let { window ->
+            item {
+                SectionCard {
+                    Text(stringResource(R.string.pattern_window_title), style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        stringResource(
+                            R.string.pattern_window_body,
+                            formatMinutes(window.startMinutes),
+                            formatMinutes(window.endMinutes),
+                            (window.share * 100).toInt(),
+                            uiState.urgePattern.sampleSize,
+                            uiState.urgePattern.daysCovered,
+                        ),
+                    )
                 }
             }
         }

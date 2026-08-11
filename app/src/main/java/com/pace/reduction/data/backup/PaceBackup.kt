@@ -47,6 +47,8 @@ data class PlanBackup(
     val notificationPrivate: Boolean,
     val hapticsEnabled: Boolean,
     val themeMode: String,
+    /** Defaulted so backups written before values existed still import. */
+    val personalValues: List<String> = emptyList(),
 )
 
 @Serializable

@@ -4,6 +4,7 @@ import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.network.OllamaMessage
 import com.pace.reduction.core.network.OllamaVisionTurn
 import com.pace.reduction.data.repository.PaceRepository
+import com.pace.reduction.domain.CoachBeat
 import com.pace.reduction.domain.CoachPrompt
 import com.pace.reduction.domain.CoachTask
 import com.pace.reduction.domain.CoachImageMemory
@@ -118,6 +119,33 @@ class CoachService(
 
     /** Unprompted funny or curious line used by the periodic check-in notification. */
     suspend fun checkup(): String = oneShot(CoachTask.CHECKUP)
+
+    /**
+     * One beat of the coach's own daily agenda.
+     *
+     * [suggestedMove] is the session the app is about to put in front of them, passed in so the
+     * written line and the button underneath it name the same thing — a message inviting someone
+     * on a walk above a button that starts a yoga flow is worse than no message.
+     */
+    suspend fun agendaMessage(beat: CoachBeat, suggestedMove: String? = null): String {
+        val settings = repository.aiSettings.first()
+        if (!settings.isReady) return ""
+        val task = when (beat) {
+            CoachBeat.MORNING_PLAN -> CoachTask.MORNING_PLAN
+            CoachBeat.MOVE_INVITE -> CoachTask.MOVE_INVITE
+            CoachBeat.EVENING_REFLECT -> CoachTask.EVENING_REFLECT
+        }
+        return client.chat(
+            apiKey = settings.apiKey,
+            model = settings.model,
+            messages = CoachPrompt.messages(
+                task = task,
+                context = if (settings.includeStats) repository.coachContext(suggestedMove) else null,
+                history = emptyList(),
+                persona = settings.systemPrompt,
+            ),
+        )
+    }
 
     /** Confirms the key works and returns the models it can reach. */
     suspend fun verify(apiKey: String): List<String> = client.listModels(apiKey.trim())

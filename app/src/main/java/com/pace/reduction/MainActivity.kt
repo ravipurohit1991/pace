@@ -22,6 +22,9 @@ import com.pace.reduction.feature.PaceApp
 class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_DESTINATION = "pace_destination"
+
+        /** A movement session id, so an invitation to move opens the session it named. */
+        const val EXTRA_MOVE_SESSION = "pace_move_session"
         const val DESTINATION_TOOLKIT = "toolkit"
         const val DESTINATION_COACH = "coach"
         const val DESTINATION_CALL = "call"
