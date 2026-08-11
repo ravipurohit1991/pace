@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
@@ -146,38 +145,81 @@ internal fun EnhancedToolkitScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
+        if (activeTool == null) item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
+        // While a tool is open the rescue card only earns its space if a pause is actually
+        // running — otherwise it is a second timer competing with the one being used.
+        if (activeTool == null || activePause.isActive) {
+            item {
+                RescueCard(
+                    plan = coach.rescuePlan,
+                    error = coach.error,
+                    busy = coach.rescueBusy,
+                    aiReady = uiState.ai.isReady,
+                    timerActive = activePause.isActive,
+                    timerPaused = activePause.isPaused,
+                    remainingMillis = pauseRemaining,
+                    onAsk = viewModel::requestRescuePlan,
+                    onStartTimer = { viewModel.startPause(null, emptySet(), "") },
+                    onPauseTimer = viewModel::pauseTimer,
+                    onResumeTimer = viewModel::resumeTimer,
+                    onCancelTimer = viewModel::cancelTimer,
+                )
+            }
+        }
+        val hapticsEnabled = uiState.settings.hapticsEnabled
+        when (activeTool) {
+            ToolCatalogue.BREATHING -> item {
+                BreathingTool(
+                    hapticsEnabled = hapticsEnabled,
+                    onComplete = { completedTool = ToolCatalogue.BREATHING },
+                    onClose = { activeTool = null },
+                )
+            }
+            ToolCatalogue.URGE_SURF -> item {
+                UrgeSurfTool(
+                    onComplete = { completedTool = ToolCatalogue.URGE_SURF },
+                    onClose = { activeTool = null },
+                )
+            }
+            ToolCatalogue.BLOCKS -> item {
+                BlockPuzzleTool(
+                    hapticsEnabled = hapticsEnabled,
+                    onComplete = { completedTool = ToolCatalogue.BLOCKS },
+                    onClose = { activeTool = null },
+                )
+            }
+            ToolCatalogue.SEQUENCE -> item {
+                SequenceGame(onComplete = { completedTool = ToolCatalogue.SEQUENCE }, onClose = { activeTool = null })
+            }
+            ToolCatalogue.MEMORY -> item {
+                MemoryGame(onComplete = { completedTool = ToolCatalogue.MEMORY }, onClose = { activeTool = null })
+            }
+            ToolCatalogue.GROUNDING -> item {
+                GroundingTool(onComplete = { completedTool = ToolCatalogue.GROUNDING }, onClose = { activeTool = null })
+            }
+            ToolCatalogue.CHANGE_PLACE -> item {
+                ChangePlaceTool(onComplete = { completedTool = ToolCatalogue.CHANGE_PLACE }, onClose = { activeTool = null })
+            }
+        }
+        // The rest of the screen is a menu, and a menu behind an open tool is just something else
+        // to look at when the whole point was to look at one thing.
+        if (activeTool != null) return@PaceScreen
+
         item {
-            RescueCard(
-                plan = coach.rescuePlan,
-                error = coach.error,
-                busy = coach.rescueBusy,
-                aiReady = uiState.ai.isReady,
-                timerActive = activePause.isActive,
-                timerPaused = activePause.isPaused,
-                remainingMillis = pauseRemaining,
-                onAsk = viewModel::requestRescuePlan,
-                onStartTimer = { viewModel.startPause(null, emptySet(), "") },
-                onPauseTimer = viewModel::pauseTimer,
-                onResumeTimer = viewModel::resumeTimer,
-                onCancelTimer = viewModel::cancelTimer,
+            ToolShelf(
+                title = stringResource(R.string.tools_guided_title),
+                body = stringResource(R.string.tools_guided_body),
+                entries = ToolCatalogue.guided,
+                onOpen = { activeTool = it },
             )
         }
-        when (activeTool) {
-            "SEQUENCE" -> item { SequenceGame(onComplete = { completedTool = "SEQUENCE" }, onClose = { activeTool = null }) }
-            "MEMORY" -> item { MemoryGame(onComplete = { completedTool = "MEMORY" }, onClose = { activeTool = null }) }
-            "GROUNDING" -> item { GroundingTool(onComplete = { completedTool = "GROUNDING" }, onClose = { activeTool = null }) }
-            "CHANGE_PLACE" -> item { ChangePlaceTool(onComplete = { completedTool = "CHANGE_PLACE" }, onClose = { activeTool = null }) }
-        }
         item {
-            SectionCard {
-                Text(stringResource(R.string.local_tools_title), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(R.string.local_tools_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ToolButton(R.string.sequence_title) { activeTool = "SEQUENCE" }
-                ToolButton(R.string.memory_title) { activeTool = "MEMORY" }
-                ToolButton(R.string.grounding_title) { activeTool = "GROUNDING" }
-                ToolButton(R.string.change_place_title) { activeTool = "CHANGE_PLACE" }
-            }
+            ToolShelf(
+                title = stringResource(R.string.local_tools_title),
+                body = stringResource(R.string.local_tools_body),
+                entries = ToolCatalogue.games,
+                onOpen = { activeTool = it },
+            )
         }
         item {
             SectionCard {
@@ -428,8 +470,11 @@ private fun SequenceGame(onComplete: () -> Unit, onClose: () -> Unit) {
         showing = false
         message = readyText
     }
-    SectionCard {
-        Text(stringResource(R.string.sequence_title), style = MaterialTheme.typography.titleLarge)
+    ToolShell(
+        title = stringResource(R.string.sequence_title),
+        evidence = stringResource(R.string.sequence_summary),
+        onClose = onClose,
+    ) {
         Text(stringResource(R.string.round_of_three, round + 1))
         Text(
             if (showing) pattern.joinToString("  ·  ") { (it + 1).toString() } else message,
@@ -462,7 +507,6 @@ private fun SequenceGame(onComplete: () -> Unit, onClose: () -> Unit) {
                 }
             }
         }
-        OutlinedButton(onClick = onClose) { Text(stringResource(R.string.close_tool)) }
     }
 }
 
@@ -485,8 +529,11 @@ private fun MemoryGame(onComplete: () -> Unit, onClose: () -> Unit) {
             if (matched.size + newlyMatched == 12) onComplete()
         }
     }
-    SectionCard {
-        Text(stringResource(R.string.memory_title), style = MaterialTheme.typography.titleLarge)
+    ToolShell(
+        title = stringResource(R.string.memory_title),
+        evidence = stringResource(R.string.memory_summary),
+        onClose = onClose,
+    ) {
         Text(stringResource(R.string.move_count, moves))
         repeat(3) { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -506,17 +553,18 @@ private fun MemoryGame(onComplete: () -> Unit, onClose: () -> Unit) {
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = {
+        OutlinedButton(
+            onClick = {
                 deck = (0 until 6).flatMap { listOf(it, it) }.shuffled()
                 visible = emptyList()
                 matched = emptyList()
                 moves = 0
-            }) {
-                Icon(Icons.Outlined.Refresh, contentDescription = null)
-                Text(stringResource(R.string.restart))
-            }
-            OutlinedButton(onClick = onClose) { Text(stringResource(R.string.close_tool)) }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Refresh, contentDescription = null)
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(R.string.restart))
         }
     }
 }
@@ -525,13 +573,20 @@ private fun MemoryGame(onComplete: () -> Unit, onClose: () -> Unit) {
 private fun GroundingTool(onComplete: () -> Unit, onClose: () -> Unit) {
     val steps = stringArrayResource(R.array.grounding_steps)
     var step by rememberSaveable { mutableIntStateOf(0) }
-    SectionCard {
-        Text(stringResource(R.string.grounding_title), style = MaterialTheme.typography.titleLarge)
+    ToolShell(
+        title = stringResource(R.string.grounding_title),
+        evidence = stringResource(R.string.grounding_summary),
+        onClose = onClose,
+    ) {
         Text(stringResource(R.string.step_of_five, step + 1))
         Text(steps[step], style = MaterialTheme.typography.headlineSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { if (step > 0) step-- else onClose() }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(if (step > 0) R.string.back else R.string.close_tool))
+            OutlinedButton(
+                onClick = { step-- },
+                enabled = step > 0,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.back))
             }
             Button(onClick = { if (step < 4) step++ else onComplete() }, modifier = Modifier.weight(1f)) {
                 Text(stringResource(if (step < 4) R.string.next else R.string.complete_tool))
@@ -551,27 +606,32 @@ private fun ChangePlaceTool(onComplete: () -> Unit, onClose: () -> Unit) {
             delay(250)
         }
     }
-    SectionCard {
-        Text(stringResource(R.string.change_place_title), style = MaterialTheme.typography.titleLarge)
+    ToolShell(
+        title = stringResource(R.string.change_place_title),
+        evidence = stringResource(R.string.guidance_change_scene_body),
+        onClose = onClose,
+    ) {
         Text(stringResource(R.string.change_place_body))
         if (endAt == 0L) {
-            Button(onClick = { endAt = System.currentTimeMillis() + 2 * 60_000L }) {
+            Button(
+                onClick = { endAt = System.currentTimeMillis() + 2 * 60_000L },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.start_two_minute_reset))
             }
         } else {
-            Text(formatToolkitTimer(remaining), style = MaterialTheme.typography.displaySmall)
-            if (remaining == 0L) Button(onClick = onComplete) { Text(stringResource(R.string.complete_tool)) }
+            Text(
+                formatToolkitTimer(remaining),
+                style = MaterialTheme.typography.displaySmall,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            if (remaining == 0L) {
+                Button(onClick = onComplete, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.complete_tool))
+                }
+            }
         }
-        OutlinedButton(onClick = onClose) { Text(stringResource(R.string.close_tool)) }
-    }
-}
-
-@Composable
-private fun ToolButton(label: Int, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Outlined.Extension, contentDescription = null)
-        Spacer(Modifier.size(8.dp))
-        Text(stringResource(label))
     }
 }
 

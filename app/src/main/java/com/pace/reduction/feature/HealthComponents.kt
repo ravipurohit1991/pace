@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -77,24 +77,35 @@ internal fun ProgressRing(
     val arcColor = if (over) MaterialTheme.colorScheme.error else accent
 
     Box(modifier = modifier.size(RING_SIZE), contentAlignment = Alignment.Center) {
-        // A halo rather than a hard edge: it reads as light coming off the ring, and because it
-        // only appears when a window is open it doubles as the screen's "you may decide now" cue.
+        // Light coming off the ring, not a disc behind it. The stops keep the middle of the gauge
+        // completely clear — an earlier version faded from solid accent at the centre outwards,
+        // which put a coloured wash under the count and made the face of the dial look smeared.
+        // The peak sits at the fraction of this box where the stroke actually is, so the halo
+        // hugs the ring however the sizes change.
         if (glow) {
             Box(
                 modifier = Modifier
-                    .size(RING_SIZE)
-                    .pulseAlpha(min = 0.18f, max = 0.5f, periodMillis = 2_800)
+                    // Required, not plain: the halo has to spill past the gauge without the gauge
+                    // reserving space for it, or the hero card grows a band of dead air.
+                    .requiredSize(HALO_SIZE)
+                    .pulseAlpha(min = 0.25f, max = 0.65f, periodMillis = 2_800)
                     .background(
                         brush = Brush.radialGradient(
-                            colors = listOf(accent, Color.Transparent),
-                            radius = with(LocalDensity.current) { RING_SIZE.toPx() * 0.52f },
+                            // Transparent right up to the ring's outer edge. Everything inside is
+                            // the gauge's own business: glow laid over the stroke washes the track
+                            // out, and glow inside the stroke smears the face behind the count.
+                            0f to Color.Transparent,
+                            RING_FRACTION to Color.Transparent,
+                            (RING_FRACTION + 0.05f) to accent.copy(alpha = 0.45f),
+                            (RING_FRACTION + 0.14f) to accent.copy(alpha = 0.14f),
+                            1f to Color.Transparent,
+                            radius = with(LocalDensity.current) { HALO_SIZE.toPx() / 2f },
                         ),
-                        shape = CircleShape,
                     ),
             )
         }
         Canvas(modifier = Modifier.size(RING_SIZE)) {
-            val stroke = 16.dp.toPx()
+            val stroke = RING_STROKE.toPx()
             val inset = stroke / 2
             drawArc(
                 color = track,
@@ -160,6 +171,13 @@ internal fun ProgressRing(
 }
 
 private val RING_SIZE = 178.dp
+private val RING_STROKE = 16.dp
+
+/** Room for the halo to fall away in. The gauge itself is still [RING_SIZE]. */
+private val HALO_SIZE = 230.dp
+
+/** Where the ring's outer edge falls within [HALO_SIZE], as a fraction of that box's radius. */
+private val RING_FRACTION = RING_SIZE / HALO_SIZE
 
 /** Open at the bottom, so the gap reads as a dial rather than a broken circle. */
 private const val START_ANGLE = 135f
