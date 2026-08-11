@@ -126,10 +126,54 @@
     <string name="change_place_body">Stand up, take water, move rooms for two minutes.</string>
     <string name="pause_timer">Pause</string>
     <string name="resume_pause">Resume</string>
-    <string name="local_tools_title">Offline distractions</string>
-    <string name="local_tools_body">No network needed.</string>
+    <string name="local_tools_title">Occupy your eyes</string>
+    <string name="local_tools_body">No network needed. Take the picture of smoking off the screen in your head.</string>
+    <string name="tools_guided_title">Work on the craving</string>
+    <string name="tools_guided_body">Techniques with evidence behind them, guided step by step.</string>
+    <string name="tool_duration_minutes">%1$d min</string>
+    <string name="tool_finish_early">Finish</string>
     <string name="sequence_title">Sequence tap</string>
+    <string name="sequence_summary">Repeat the pattern back, one round longer each time.</string>
     <string name="memory_title">Memory pairs</string>
+    <string name="memory_summary">Turn over pairs until the board is clear.</string>
+    <string name="grounding_summary">Five senses, one at a time, to land back in the room.</string>
+    <string name="change_place_summary">Stand up and move rooms for two minutes.</string>
+
+    <string name="breathing_title">Paced breathing</string>
+    <string name="breathing_summary">Slow the breath and the urge loses its engine.</string>
+    <string name="breathing_evidence">Slow, paced breathing is one of the few things shown to ease a craving within a single session.</string>
+    <string name="breathing_pattern_box">Box 4·4·4·4</string>
+    <string name="breathing_pattern_relaxing">Long out 4·7·8</string>
+    <string name="breathing_pattern_coherent">Coherent 6·6</string>
+    <string name="breathing_phase_inhale">Breathe in</string>
+    <string name="breathing_phase_hold">Hold</string>
+    <string name="breathing_phase_exhale">Breathe out</string>
+    <string name="breathing_phase_rest">Rest</string>
+    <string name="breathing_ready">Ready</string>
+    <string name="breathing_ready_body">Pick a rhythm. About %1$d minutes, and you can stop whenever.</string>
+    <string name="breathing_cycles">Breath %1$d of %2$d</string>
+    <string name="breathing_start">Start breathing</string>
+
+    <string name="urge_surf_title">Urge surfing</string>
+    <string name="urge_surf_summary">Watch the craving crest and fall instead of fighting it.</string>
+    <string name="urge_surf_evidence">Urges rise, peak and pass on their own — usually well inside twenty minutes, whether or not you act on them.</string>
+    <string name="urge_surf_start">Start the wave</string>
+    <string name="urge_surf_ready">Three minutes</string>
+    <string name="urge_surf_ready_body">The wave will rise, crest early, and fall. Your only job is to watch it.</string>
+    <string name="urge_surf_rising">Rising</string>
+    <string name="urge_surf_cresting">Cresting</string>
+    <string name="urge_surf_falling">Falling</string>
+
+    <string name="blocks_title">Falling blocks</string>
+    <string name="blocks_summary">Crowd out the picture of smoking with shapes to fit.</string>
+    <string name="blocks_evidence">A few minutes of a shape puzzle measurably weakened cravings in trials: it competes for the same mental picture.</string>
+    <string name="blocks_start">Start three minutes</string>
+    <string name="blocks_lines">Lines %1$d</string>
+    <string name="blocks_left">Move left</string>
+    <string name="blocks_right">Move right</string>
+    <string name="blocks_rotate">Rotate</string>
+    <string name="blocks_drop">Drop</string>
+    <string name="blocks_board">Puzzle board. Tap to rotate the piece.</string>
     <string name="round_of_three">Round %1$d of 3</string>
     <string name="sequence_your_turn">Your turn</string>
     <string name="sequence_try_again">Try again</string>
@@ -413,6 +457,15 @@
     <string name="notification_location_body">A familiar cue may be near. Change the scene for two minutes?</string>
     <string-array name="memory_symbols">
         <item>●</item><item>■</item><item>▲</item><item>◆</item><item>★</item><item>♥</item>
+    </string-array>
+    <!-- Marlatt's urge-surfing sequence: name it, find it, breathe with it, watch it, ride it, choose. -->
+    <string-array name="urge_surf_stages">
+        <item>Name it. “This is a craving.” Nothing more than that.</item>
+        <item>Find where it sits — throat, chest, hands. Put your attention there.</item>
+        <item>Breathe into that spot. You are not trying to push it away.</item>
+        <item>Watch it without arguing. It is a sensation, not an instruction.</item>
+        <item>It has crested. Stay with it while it goes back down.</item>
+        <item>Still here, and it is smaller. Choose what happens next.</item>
     </string-array>
     <string-array name="grounding_steps">
         <item>Notice five things you can see.</item>
