@@ -103,7 +103,7 @@ import com.pace.reduction.R
 import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.breathe
 import com.pace.reduction.core.designsystem.entrance
-import com.pace.reduction.core.designsystem.fadeThrough
+import com.pace.reduction.core.designsystem.cutBetween
 import com.pace.reduction.core.designsystem.slideAlong
 import com.pace.reduction.core.designsystem.pressScale
 import com.pace.reduction.core.designsystem.pulseAlpha
@@ -301,12 +301,15 @@ private fun MainShell(
     val motion = LocalMotion.current
     val haptics = LocalHapticFeedback.current
     val hapticsEnabled = uiState.settings.hapticsEnabled
-    // Carried by the four tab destinations, so a move that involves one of them fades through in
+    // Carried by the four tab destinations, so a move that involves one of them is a plain swap in
     // both directions — including the back press out of a tab, which is a move between peers even
     // though the stack happens to record it as a pop.
-    val tabTransition = remember(motion) {
-        NavDisplay.transitionSpec { motion.fadeThrough() } +
-            NavDisplay.popTransitionSpec { motion.fadeThrough() }
+    val tabTransition = remember {
+        NavDisplay.transitionSpec { cutBetween() } +
+            NavDisplay.popTransitionSpec { cutBetween() } +
+            // The gesture has its own spec, and leaving it unset is what put the shrunken outgoing
+            // screen on top of the incoming one — the library's default, and the overlap again.
+            NavDisplay.predictivePopTransitionSpec { cutBetween() }
     }
 
     Scaffold(
@@ -353,6 +356,8 @@ private fun MainShell(
             // history, a call — where a slide is the honest description of what just happened.
             transitionSpec = { motion.slideAlong(forward = true) },
             popTransitionSpec = { motion.slideAlong(forward = false) },
+            // Same slide again, so a back gesture and a back press on a stacked screen agree.
+            predictivePopTransitionSpec = { motion.slideAlong(forward = false) },
             entryProvider = entryProvider {
                 entry<TodayDestination>(metadata = tabTransition) {
                     TodayScreen(
@@ -1289,236 +1294,6 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
 }
 
 @Composable
-private fun ProgressScreen(
-    uiState: PaceUiState,
-    onOpenSettings: () -> Unit,
-    onToggleSteps: (Boolean) -> Unit,
-) {
-    val metrics = requireNotNull(uiState.progress)
-    val quit = uiState.quit
-    val locale = LocalConfiguration.current.locales[0]
-    var rangeDays by rememberSaveable { mutableIntStateOf(7) }
-    val visibleDays = metrics.days.takeLast(rangeDays)
-    val max = maxOf(
-        visibleDays.maxOfOrNull { it.count } ?: 1,
-        visibleDays.maxOfOrNull { it.ceiling ?: 0 } ?: 1,
-        1,
-    )
-    val triggerSample = uiState.urgeSessions.filter { it.triggerTags.isNotEmpty() }
-    val topTrigger = triggerSample.flatMap { it.triggerTags }
-        .groupingBy { it }
-        .eachCount()
-        .maxByOrNull { it.value }
-    val suggestedCeiling = ReductionPlanner.suggestedCeiling(
-        currentCeiling = uiState.settings.dailyCeiling,
-        step = uiState.settings.reductionStep,
-        reviewIntervalDays = uiState.settings.reviewIntervalDays,
-        completedDays = metrics.days,
-    )
-
-    PaceScreen(
-        title = stringResource(R.string.progress_title),
-        actions = {
-            IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))
-            }
-        },
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item { LeadParagraph(stringResource(R.string.progress_intro)) }
-        if (quit != null) {
-            item {
-                StatGrid(
-                    listOf(
-                        quit.zeroDayStreak.toString() to stringResource(R.string.quit_streak),
-                        metrics.avoidedCigarettes.toString() to stringResource(R.string.estimated_avoided),
-                        String.format(
-                            locale,
-                            "%.0f %s",
-                            metrics.estimatedSavings,
-                            uiState.settings.currencyCode,
-                        ) to stringResource(R.string.estimated_savings),
-                    ),
-                )
-            }
-        }
-        item {
-            SectionCard {
-                Text(stringResource(R.string.progress_history), style = MaterialTheme.typography.titleLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = rangeDays == 7, onClick = { rangeDays = 7 }, label = { Text(stringResource(R.string.seven_days)) })
-                    FilterChip(selected = rangeDays == 30, onClick = { rangeDays = 30 }, label = { Text(stringResource(R.string.thirty_days)) })
-                }
-                Spacer(Modifier.height(6.dp))
-                visibleDays.forEachIndexed { index, day ->
-                    val ceiling = day.ceiling ?: uiState.settings.dailyCeiling
-                    DayBar(
-                        label = day.date.dayOfWeek.name.take(3),
-                        value = if (day.recorded) {
-                            stringResource(R.string.day_count_accessible, day.count, ceiling)
-                        } else {
-                            stringResource(R.string.day_unknown)
-                        },
-                        fraction = if (day.recorded) day.count.toFloat() / max.toFloat() else 0f,
-                        overCeiling = day.recorded && ceiling > 0 && day.count > ceiling,
-                        index = index,
-                    )
-                }
-            }
-        }
-        item {
-            StepSection(
-                steps = uiState.steps,
-                rangeDays = rangeDays,
-                onToggle = onToggleSteps,
-            )
-        }
-        // Above the recovery ladder deliberately: what the next three days cost is the more urgent
-        // of the two questions, and it is the one nobody answers.
-        uiState.withdrawal?.takeIf { it.relevant }?.let { withdrawal ->
-            item { WithdrawalCard(withdrawal) }
-        }
-        if (quit != null) {
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.quit_health_title), style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        stringResource(R.string.quit_best_streak, quit.bestZeroDayStreak),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    RecoveryTimeline(quit)
-                }
-            }
-        }
-        item {
-            SectionCard {
-                Text(stringResource(R.string.progress_evidence), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(R.string.average_seven, metrics.sevenDayAverage ?: 0.0))
-                Text(stringResource(R.string.longest_gap, metrics.longestGapMinutes))
-                Text(stringResource(R.string.best_morning_hold, metrics.bestMorningHoldMinutes))
-                Text(stringResource(R.string.steady_days, metrics.steadyDays7, metrics.steadyDays30))
-                Text(stringResource(R.string.pauses_recorded, metrics.pausesCompleted))
-                Text(
-                    stringResource(R.string.delay_is_win),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (uiState.settings.rewardTarget > 0) {
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.reward_progress_title), style = MaterialTheme.typography.titleLarge)
-                    LinearProgressIndicator(progress = { metrics.rewardProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
-                    Text(stringResource(R.string.reward_progress_value, (metrics.rewardProgress * 100).toInt(), uiState.settings.rewardName.ifBlank { stringResource(R.string.your_reward) }))
-                }
-            }
-        }
-        uiState.urgePattern.window?.let { window ->
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.pattern_window_title), style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        stringResource(
-                            R.string.pattern_window_body,
-                            formatMinutes(window.startMinutes),
-                            formatMinutes(window.endMinutes),
-                            (window.share * 100).toInt(),
-                            uiState.urgePattern.sampleSize,
-                            uiState.urgePattern.daysCovered,
-                        ),
-                    )
-                }
-            }
-        }
-        if (topTrigger != null) {
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.pattern_reflection), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.trigger_reflection, topTrigger.key.replace('_', ' '), topTrigger.value, triggerSample.size))
-                }
-            }
-        }
-        if (suggestedCeiling != null) {
-            item {
-                SectionCard {
-                    Text(stringResource(R.string.review_suggestion_title), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.review_suggestion_body, suggestedCeiling))
-                }
-            }
-        }
-        item {
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.badges_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        stringResource(R.string.badges_earned, uiState.achievements.size, BadgeCatalogue.size),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                BadgeFamilyList(uiState.achievements)
-            }
-        }
-    }
-}
-
-/**
- * One day of history.
- *
- * The bars grow from nothing as the list arrives, staggered by row, so a week of history reads
- * left-to-right like a chart being drawn rather than appearing pre-drawn — and a day that went
- * over its ceiling recolours instead of needing a legend.
- */
-@Composable
-private fun DayBar(
-    label: String,
-    value: String,
-    fraction: Float,
-    overCeiling: Boolean,
-    index: Int,
-) {
-    val motion = LocalMotion.current
-    // Saved, not remembered: these rows live in a lazy list, and a chart that redraws itself every
-    // time it scrolls back into view stops reading as a chart.
-    var shown by rememberSaveable { mutableStateOf(false) }
-    val animated by animateFloatAsState(
-        targetValue = if (shown) fraction.coerceIn(0f, 1f) else 0f,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = motion.duration(520),
-            delayMillis = motion.duration((index * 40).coerceAtMost(320)),
-        ),
-        label = "dayBar",
-    )
-    LaunchedEffect(Unit) { shown = true }
-
-    Column(modifier = Modifier.padding(vertical = 5.dp)) {
-        Row {
-            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-            Text(value, style = MaterialTheme.typography.labelMedium)
-        }
-        LinearProgressIndicator(
-            progress = { animated },
-            modifier = Modifier.fillMaxWidth().height(7.dp),
-            color = if (overCeiling) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
-    }
-}
-
-@Composable
 internal fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -1559,14 +1334,17 @@ private fun parseTime(value: String): Int? = runCatching {
     time.hour * 60 + time.minute
 }.getOrNull()
 
-private fun formatMinutes(totalMinutes: Int): String = "%02d:%02d".format(
+internal fun formatMinutes(totalMinutes: Int): String = "%02d:%02d".format(
     totalMinutes.coerceIn(0, 1439) / 60,
     totalMinutes.coerceIn(0, 1439) % 60,
 )
 
-private fun durationText(duration: Duration): String {
-    val totalMinutes = duration.toMinutes().coerceAtLeast(0)
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
+private fun durationText(duration: Duration): String = durationText(duration.toMinutes())
+
+/** A span in words rather than a bare minute count: "2h 05m" reads, "125 min" has to be worked out. */
+internal fun durationText(totalMinutes: Long): String {
+    val safe = totalMinutes.coerceAtLeast(0)
+    val hours = safe / 60
+    val minutes = safe % 60
     return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
 }

@@ -157,6 +157,23 @@ Settings → Edit history steps through any past day so you can add a moment you
 counted twice. Editing a past day backfills its plan snapshot, so a corrected day starts counting toward
 your averages, steady days and the adaptive gap.
 
+### A quarter of history, and whether this week is better than last
+
+Progress opens on the two questions a single day cannot answer.
+
+**This week against last week**, compared over the same number of days — on a Tuesday it weighs two days
+against the first two of last week, never against last week's full seven. Comparing a part against a whole
+flatters the part, and a screen that congratulates you every Monday morning is worth nothing by Friday. It
+shows what changed: fewer or more logged, clear days gained or lost, whether the longest wait grew.
+
+**Thirteen weeks as a calendar**, rows of weeks under each other with a colour per day — clear, under the
+ceiling, at it, over it. Weeks stacked this way make a bad Friday visible as a column instead of as four
+separate bars a month apart. Days before you started are drawn as blanks rather than as perfect days: a grid
+that shows the month before you installed the app as a wall of green is a grid that lies.
+
+The rest of the screen is grouped rather than stacked — this week, your history, your body, what your history
+shows, milestones — so the part you came for is one heading away instead of ten cards down.
+
 ### Watch your body repair itself
 
 Twelve recovery milestones on the published CDC/NHS timeline, from *heart rate settles* at 20 minutes to
