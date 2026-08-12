@@ -1,5 +1,6 @@
 package com.pace.reduction.feature
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,6 +66,10 @@ internal fun GuidedOnboardingScreen(initial: PlanSettings, onFinish: (PlanSettin
         2 -> routineValid
         else -> true
     }
+
+    // Back steps through the wizard the same way its own Back button does. Closing the app halfway
+    // through setup would throw away everything typed so far.
+    BackHandler(enabled = page > 0) { page-- }
 
     fun resultPlan() = initial.copy(
         baselinePerDay = baseline.toIntOrNull() ?: 20,

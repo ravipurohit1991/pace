@@ -21,6 +21,8 @@ data class CoachContext(
     val currencyCode: String,
     val hardestSituations: List<String>,
     val personalReason: String,
+    /** The short lines they wrote about what this is for. Worth more than the paragraph. */
+    val personalValues: List<String>,
     val tone: String,
     /** Local wall-clock context, so replies fit the time of day the user is actually living in. */
     val localTime: String,
@@ -29,9 +31,36 @@ data class CoachContext(
     val timeZone: String,
     /** True when the user is inside a window they marked as difficult. */
     val inHighUrgeWindow: Boolean,
+    /** "15:00 to 17:00" — the stretch their own history keeps landing in, or null if none found. */
+    val learnedPeakWindow: String? = null,
+    val inLearnedPeak: Boolean = false,
+    /** Hours into the current clean stretch, framed as where the body is rather than what it wants. */
+    val bodyStage: String? = null,
+    val minutesUntilSleep: Long? = null,
+    val minutesSinceWake: Long? = null,
+    val stepsToday: Long = 0,
+    val usualStepsPerDay: Long = 0,
+    /** Guided movement sessions finished today, and how long ago the last one was. */
+    val movesToday: Int = 0,
+    val minutesSinceLastMove: Long? = null,
+    /** Today's count against the same day last week, as a direction of travel. */
+    val weeklyTrend: String? = null,
+    /** For a MOVE_INVITE: the session the app is about to offer, so the line matches the button. */
+    val suggestedMove: String? = null,
 )
 
-enum class CoachTask { CHAT, RIDDLE, NUDGE, INSIGHT, CHECKUP, QUOTE, RESCUE }
+enum class CoachTask {
+    CHAT,
+    RIDDLE,
+    NUDGE,
+    INSIGHT,
+    CHECKUP,
+    QUOTE,
+    RESCUE,
+    MORNING_PLAN,
+    MOVE_INVITE,
+    EVENING_REFLECT,
+}
 
 object CoachPrompt {
     /**
@@ -173,6 +202,22 @@ object CoachPrompt {
             "Write one unprompted check-in of under 25 words for a notification. Make it land: either " +
                 "genuinely funny, or a curious thought that snags attention. Vary the angle each time. " +
                 "Do not nag and do not mention their progress statistics."
+        CoachTask.MORNING_PLAN ->
+            "It is the start of their day and they have not asked you anything. Greet them like a " +
+                "friend who is already up, then give the day one shape: name the stretch that tends " +
+                "to be hardest for them and one specific thing to do about it before it arrives. If " +
+                "a movement session is suggested below, invite them into that one by name. Under 45 " +
+                "words, warm, no lists."
+        CoachTask.MOVE_INVITE ->
+            "Get them out of the chair. Invite them into the specific movement session named below, " +
+                "in a way that makes the next four minutes sound easy rather than virtuous. One " +
+                "reason it is worth it, drawn from their own figures if you have one. Under 30 words, " +
+                "no lecture about health."
+        CoachTask.EVENING_REFLECT ->
+            "The day is nearly done and nothing more is expected of them tonight. Say one true, " +
+                "specific thing about how today went — the numbers are below — and let them put it " +
+                "down. If today was hard, say so plainly and do not spin it. Under 40 words. Never " +
+                "assign homework."
     }
 
     private fun kickoff(task: CoachTask): String = when (task) {
@@ -182,6 +227,9 @@ object CoachPrompt {
         CoachTask.CHECKUP -> "Check in on me."
         CoachTask.QUOTE -> "Send me something worth carrying."
         CoachTask.RESCUE -> "Give me something to do for the next few minutes."
+        CoachTask.MORNING_PLAN -> "Morning. What does today look like?"
+        CoachTask.MOVE_INVITE -> "Talk me into getting up."
+        CoachTask.EVENING_REFLECT -> "How did today go?"
         CoachTask.CHAT -> ""
     }
 
@@ -192,23 +240,54 @@ object CoachPrompt {
             "- Right now it is ${context.localTime} on ${context.dayOfWeek} " +
                 "(${context.partOfDay}, ${context.timeZone}). Fit what you say to that hour.",
         )
+        context.minutesSinceWake?.let { appendLine("- Hours since they got up: ${it / 60}") }
+        context.minutesUntilSleep?.let { appendLine("- Minutes until their usual bedtime: $it") }
         if (context.inHighUrgeWindow) {
             appendLine("- They flagged this time of day as one of their harder stretches. Be extra engaging.")
         }
+        // The learned window is the app's observation, not their claim, so it is labelled as such —
+        // a model told "they said" about something they never said will happily repeat it back.
+        context.learnedPeakWindow?.let { window ->
+            appendLine(
+                "- Their own history clusters between $window. They did not tell you this; the app " +
+                    "worked it out. Treat it as a hunch worth acting on, never as a fact to recite.",
+            )
+        }
+        if (context.inLearnedPeak) appendLine("- Right now falls inside that stretch.")
         appendLine("- Moments they gave in to today: ${context.countToday}, against a plan of ${context.ceiling}")
         context.minutesSinceLast?.let { appendLine("- Minutes since the last one: $it") }
         context.minutesUntilNextWindow?.let { appendLine("- Minutes until their next scheduled window: $it") }
         appendLine("- Hours in the current clean stretch: ${context.freeHours}")
+        context.bodyStage?.let { appendLine("- Where their body is in this stretch: $it") }
         if (context.zeroDayStreak > 0) appendLine("- Consecutive clear days: ${context.zeroDayStreak}")
         appendLine("- Moments resisted versus their old baseline: ${context.avoided}")
+        context.weeklyTrend?.let { appendLine("- Direction of travel this week: $it") }
         if (context.moneySaved > 0) {
             appendLine("- Money kept in their pocket: ${"%.2f".format(context.moneySaved)} ${context.currencyCode}")
         }
+        if (context.stepsToday > 0 || context.usualStepsPerDay > 0) {
+            appendLine(
+                "- Walked today: ${context.stepsToday} steps" +
+                    if (context.usualStepsPerDay > 0) ", against a usual day of ${context.usualStepsPerDay}" else "",
+            )
+        }
+        if (context.movesToday > 0) appendLine("- Movement sessions they finished today: ${context.movesToday}")
+        context.minutesSinceLastMove?.let { appendLine("- Minutes since they last moved on purpose: $it") }
         if (context.hardestSituations.isNotEmpty()) {
             appendLine("- Situations they find hardest: ${context.hardestSituations.joinToString(", ")}")
         }
+        if (context.personalValues.isNotEmpty()) {
+            appendLine(
+                "- What they said this is for, in their words: " +
+                    context.personalValues.joinToString("; ") { "\"${it.take(80)}\"" } +
+                    ". Reach for these instead of encouragement when they are wobbling.",
+            )
+        }
         if (context.personalReason.isNotBlank()) {
-            appendLine("- Why this matters to them, in their words: \"${context.personalReason.take(300)}\"")
+            appendLine("- The longer version of why: \"${context.personalReason.take(300)}\"")
+        }
+        context.suggestedMove?.let {
+            appendLine("- The movement session the app is about to offer them: $it. Name this one, not another.")
         }
         append("- Tone they prefer: ${context.tone.lowercase()}")
     }

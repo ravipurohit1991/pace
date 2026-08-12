@@ -519,4 +519,183 @@
     <string name="widget_message_recovery">One over does not own the day.</string>
     <string name="rest_mode_title">Rest mode</string>
     <string name="rest_mode_body">Pace is quiet for the night. Your daytime plan returns after wake time.</string>
+
+    <!-- Values -->
+    <string name="values_title">What this is for</string>
+    <string name="values_body">Up to %1$d short lines, in your own words. These are what Pace puts in front of you mid-moment, and what the coach reaches for instead of encouragement.</string>
+    <string name="values_add_label">Add a line</string>
+    <string name="values_add">Add</string>
+    <string name="values_remove">Remove %1$s</string>
+    <string name="your_values">What this is for</string>
+    <string-array name="value_suggestions">
+        <item>Be there when they’re grown</item>
+        <item>Stairs without stopping</item>
+        <item>Not smelling of it</item>
+        <item>Money that’s mine</item>
+        <item>Sleep through the night</item>
+        <item>Not needing anything</item>
+    </string-array>
+
+    <!-- Learned hardest stretch -->
+    <string name="high_urge_learned">Your own history clusters between %1$s and %2$s — %3$d%% of the last %4$d recorded days land there.</string>
+    <string name="high_urge_learned_apply">Use what Pace found</string>
+    <string name="pattern_window_title">Your hardest stretch</string>
+    <string name="pattern_window_body">%3$d%% of your moments land between %1$s and %2$s. That is %4$d moments across %5$d days — not a rule, but worth planning around.</string>
+
+    <!-- What the next few days cost -->
+    <string name="withdrawal_title">The next few days</string>
+    <string name="withdrawal_settling">Settling in</string>
+    <string name="withdrawal_settling_body">Nothing much yet. The first stirrings usually arrive around the four-hour mark.</string>
+    <string name="withdrawal_climbing">Climbing</string>
+    <string name="withdrawal_climbing_body">This is the part that builds. It is meant to — it is not a sign the plan is failing.</string>
+    <string name="withdrawal_peak">The peak</string>
+    <string name="withdrawal_peak_body">Day two and three are the summit. Published guidance is consistent on this: it does not keep climbing past here.</string>
+    <string name="withdrawal_turning">Turning</string>
+    <string name="withdrawal_turning_body">Past the top. It eases from here, unevenly rather than in a straight line.</string>
+    <string name="withdrawal_easing">Easing</string>
+    <string name="withdrawal_easing_body">Much quieter now. What is left is habit and cue more than chemistry.</string>
+    <string name="withdrawal_fading">Fading</string>
+    <string name="withdrawal_fading_body">Most of it is gone by three to four weeks. Moments still arrive; they are shorter.</string>
+    <string name="withdrawal_clear">Clear</string>
+    <string name="withdrawal_clear_body">The curve is behind you.</string>
+    <string name="withdrawal_peak_ahead">About %1$d hours until the sharpest part is behind you.</string>
+    <string name="withdrawal_peak_passed">The sharpest part is behind you.</string>
+    <string name="withdrawal_phase_row">%1$s · %2$s</string>
+    <string name="withdrawal_source">Shape follows published CDC and NHS cessation guidance. Everyone’s is different.</string>
+
+    <!-- Movement -->
+    <string name="move_shelf_title">Move</string>
+    <string name="move_shelf_body">The only shelf here with a dose behind it: one short bout blunts a moment for the half hour that follows, even at walking pace.</string>
+    <string name="move_evidence">A single bout of movement reduces wanting for roughly 30–50 minutes afterwards, from 15 minutes of walking upward.</string>
+    <string name="move_start">Start</string>
+    <string name="move_intro_walk">%1$d minutes · about %2$d steps</string>
+    <string name="move_intro_steps">%1$d minutes · %2$d parts</string>
+    <string name="move_rate_before">How strong is it right now? (optional)</string>
+    <string name="move_rate_after">And now? (optional)</string>
+    <string name="move_step_of">Part %1$d of %2$d</string>
+    <string name="move_next_up">Next: %1$s</string>
+    <string name="move_steps_so_far">%1$d of %2$d steps</string>
+    <string name="move_done_title">Done.</string>
+    <string name="move_done_steps">%1$d steps that were not going to happen otherwise.</string>
+    <string name="move_done_close">Close</string>
+    <string name="move_delta_down">%1$d down to %2$d. That is the walk, not luck.</string>
+    <string name="move_delta_up">Still up. It happens — the movement was still worth it.</string>
+    <string name="move_delta_level">Level. Sometimes that is the win.</string>
+
+    <string name="move_walk_reset_title">Five-minute walk</string>
+    <string name="move_walk_reset_summary">Out the door, turn round, come back different.</string>
+    <string name="move_walk_long_title">Proper walk</string>
+    <string name="move_walk_long_summary">Fifteen minutes with a brisk middle.</string>
+    <string name="move_run_title">Easy intervals</string>
+    <string name="move_run_summary">Jog, three pushes, jog. No pace to hit.</string>
+    <string name="move_pushup_title">Push-up ladder</string>
+    <string name="move_pushup_summary">Five, eight, ten, as many as you have left.</string>
+    <string name="move_circuit_title">Bodyweight circuit</string>
+    <string name="move_circuit_summary">Squats, push-ups, plank. Twice round.</string>
+    <string name="move_yoga_morning_title">Morning flow</string>
+    <string name="move_yoga_morning_summary">Eight poses to unstick the night.</string>
+    <string name="move_yoga_evening_title">Wind-down flow</string>
+    <string name="move_yoga_evening_summary">Floor-level, slow, ends lying down.</string>
+    <string name="move_desk_title">Desk reset</string>
+    <string name="move_desk_summary">Three minutes, no floor space, no changing.</string>
+
+    <string name="step_walk_out">Walk out</string>
+    <string name="cue_walk_out">Any direction. Pick something to walk towards and go.</string>
+    <string name="step_walk_back">Turn round</string>
+    <string name="cue_walk_back">Same way back. Longer strides than feel natural.</string>
+    <string name="step_walk_easy">Easy pace</string>
+    <string name="cue_walk_easy">Conversational. Shoulders down, arms swinging.</string>
+    <string name="step_walk_brisk">Brisk</string>
+    <string name="cue_walk_brisk">Fast enough that a full sentence takes effort.</string>
+    <string name="step_walk_notice">Notice five things</string>
+    <string name="cue_walk_notice">Keep walking. Name five things you have never noticed on this street.</string>
+    <string name="step_run_warm">Warm up</string>
+    <string name="cue_run_warm">Slow jog. Let the first minute feel bad; it always does.</string>
+    <string name="step_run_push">Push</string>
+    <string name="cue_run_push">Faster, not flat out. Breathing should be obviously harder.</string>
+    <string name="step_run_float">Float</string>
+    <string name="cue_run_float">Back to slow. Recover properly — the next push needs it.</string>
+    <string name="step_run_cool">Cool down</string>
+    <string name="cue_run_cool">Jog, then walk it out. Let the breathing come back on its own.</string>
+    <string name="step_pushup_prep">Set up</string>
+    <string name="cue_pushup_prep">Hands under shoulders. Knees down is a push-up.</string>
+    <string name="step_pushup_five">Five</string>
+    <string name="cue_pushup_five">Slow down, quick up. Straight line from head to heels.</string>
+    <string name="step_pushup_eight">Eight</string>
+    <string name="cue_pushup_eight">Same form. Stop the set before the form goes, not after.</string>
+    <string name="step_pushup_ten">Ten</string>
+    <string name="cue_pushup_ten">Break it into two if you need to. It still counts.</string>
+    <string name="step_pushup_max">As many as are left</string>
+    <string name="cue_pushup_max">Whatever that number is today, it is the right one.</string>
+    <string name="step_pushup_finish">Shake it out</string>
+    <string name="cue_pushup_finish">Arms loose. Notice your heart rate — that is the point of all this.</string>
+    <string name="step_rest_shake">Rest</string>
+    <string name="cue_rest_shake">Stand up, shake the arms out, breathe through the nose.</string>
+    <string name="step_circuit_march">March on the spot</string>
+    <string name="cue_circuit_march">Knees up. Get warm before anything asks for strength.</string>
+    <string name="step_circuit_squat">Squats</string>
+    <string name="cue_circuit_squat">Feet shoulder width. Sit back, chest up, all the way down.</string>
+    <string name="step_circuit_pushup">Push-ups</string>
+    <string name="cue_circuit_pushup">Knees down if you need them. Controlled beats many.</string>
+    <string name="step_circuit_plank">Plank</string>
+    <string name="cue_circuit_plank">Forearms down, hips level. Squeeze everything.</string>
+    <string name="step_circuit_breathe">Stand and breathe</string>
+    <string name="cue_circuit_breathe">Hands on your head, long exhales. Let it settle.</string>
+    <string name="step_yoga_stand_tall">Stand tall</string>
+    <string name="cue_yoga_stand_tall">Feet hip width, arms heavy. Three slow breaths before moving.</string>
+    <string name="step_yoga_cat_cow">Cat–cow</string>
+    <string name="cue_yoga_cat_cow">On all fours. Arch on the inhale, round on the exhale.</string>
+    <string name="step_yoga_down_dog">Downward dog</string>
+    <string name="cue_yoga_down_dog">Hips high, heels reaching down. Bend the knees as much as you like.</string>
+    <string name="step_yoga_lunge_left">Low lunge, left</string>
+    <string name="cue_yoga_lunge_left">Left foot forward, back knee down. Sink the hips, lift the chest.</string>
+    <string name="step_yoga_lunge_right">Low lunge, right</string>
+    <string name="cue_yoga_lunge_right">Right foot forward, back knee down. Same again on this side.</string>
+    <string name="step_yoga_forward_fold">Forward fold</string>
+    <string name="cue_yoga_forward_fold">Hinge at the hips, knees soft, head hanging heavy.</string>
+    <string name="step_yoga_chest_open">Open the chest</string>
+    <string name="cue_yoga_chest_open">Hands clasped behind you, arms straight, lift them away.</string>
+    <string name="step_yoga_reach_up">Reach up</string>
+    <string name="cue_yoga_reach_up">Both arms overhead, one long stretch. Then let them drop.</string>
+    <string name="step_yoga_child">Child’s pose</string>
+    <string name="cue_yoga_child">Knees wide, arms forward, forehead down. Breathe into your back.</string>
+    <string name="step_yoga_twist_left">Twist, left</string>
+    <string name="cue_yoga_twist_left">Lying down, knees over to the left, look right.</string>
+    <string name="step_yoga_twist_right">Twist, right</string>
+    <string name="cue_yoga_twist_right">Knees over to the right, look left. Let gravity do it.</string>
+    <string name="step_yoga_figure_four_left">Figure four, left</string>
+    <string name="cue_yoga_figure_four_left">On your back, left ankle over right knee, pull the right thigh in.</string>
+    <string name="step_yoga_figure_four_right">Figure four, right</string>
+    <string name="cue_yoga_figure_four_right">Swap sides. Right ankle over left knee.</string>
+    <string name="step_yoga_legs_up">Legs up the wall</string>
+    <string name="cue_yoga_legs_up">Legs up against a wall or a chair. Arms out wide.</string>
+    <string name="step_yoga_settle">Settle</string>
+    <string name="cue_yoga_settle">Flat on your back, nothing to do. Let the exhale be longer than the inhale.</string>
+    <string name="step_desk_stand">Stand up</string>
+    <string name="cue_desk_stand">Push the chair back. That is the hard part done.</string>
+    <string name="step_desk_shoulder_rolls">Shoulder rolls</string>
+    <string name="cue_desk_shoulder_rolls">Big and slow, backwards. Ears away from shoulders.</string>
+    <string name="step_desk_neck_left">Neck, left</string>
+    <string name="cue_desk_neck_left">Left ear towards left shoulder. Let the other arm hang.</string>
+    <string name="step_desk_neck_right">Neck, right</string>
+    <string name="cue_desk_neck_right">Other side. No pulling — weight of the head is enough.</string>
+    <string name="step_desk_chest_open">Open the chest</string>
+    <string name="cue_desk_chest_open">Hands behind your head, elbows wide, look slightly up.</string>
+    <string name="step_desk_twist">Standing twist</string>
+    <string name="cue_desk_twist">Feet planted, turn the ribs one way then the other.</string>
+
+    <!-- The coach's own agenda -->
+    <string name="agenda_title">Let the coach start</string>
+    <string name="agenda_body">A plan in the morning, a nudge to move during the day, and one line before bed — without you opening anything.</string>
+    <string name="agenda_needs_coach">Turn the AI coach on in Settings first.</string>
+    <string name="agenda_work_from">Day starts</string>
+    <string name="agenda_work_to">Day ends</string>
+    <string name="agenda_move_invites">Invitations to move per day</string>
+    <string name="notification_morning_title">Morning</string>
+    <string name="notification_move_title">Time to move</string>
+    <string name="notification_evening_title">Winding down</string>
+    <string name="notification_move_action">Start it</string>
+    <string name="agenda_morning_fallback">New day. Pick the stretch you already know is hardest, and decide now what you will do instead.</string>
+    <string name="agenda_move_fallback">Four minutes on your feet. It works on the moment itself, not just the clock.</string>
+    <string name="agenda_evening_fallback">That is today done. Whatever it was, it is behind you now.</string>
 </resources>

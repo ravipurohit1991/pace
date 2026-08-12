@@ -81,6 +81,62 @@ Two kinds of notification, both written fresh by the model and both opening stra
 
 Both obey quiet hours, a daily cap and a cooldown, and neither ever tells you it is time to smoke.
 
+### The coach runs its own day
+
+Beyond reacting, the coach keeps an agenda built from where *you* are in your day rather than from a timer:
+
+- **A morning plan** shortly after your wake time  the shape of the day, the stretch it already knows is
+  hardest for you, and one specific thing to do before it arrives.
+- **Invitations to move** during the hours you set as your day, capped per day with a hard gap between them.
+  Each one names an actual session and opens straight into it.
+- **One line in the evening**, an hour or two before bed, about how today went and nothing to do about it now.
+
+Everything it writes is also appended to the chat, so opening a notification lands in a conversation that has
+already started instead of an empty composer. Turn the whole agenda off in **Plan → Let the coach start**.
+
+### Everything it knows about you, without being asked
+
+When stats are shared, each request is grounded in far more than a count. On top of the figures above the
+model receives your values, the stretch your own timestamps cluster in, where your body is in the current
+clean stretch, how much you have walked today against your usual, how long since you last moved on purpose,
+this week against last week, and how long until you normally sleep  all phrased so none of it can be echoed
+back as a trigger. The learned window is labelled as the app's observation rather than something you said, so
+it is treated as a hunch to act on instead of a fact to recite.
+
+### It finds your hardest stretch instead of asking for it
+
+You can still mark a difficult window by hand, but Pace reads it off your own log timestamps: a month of
+history, bucketed by half hour, scanned for the densest two-to-three-hour band and trimmed back to where the
+moments actually start and stop. It only speaks up once there is enough history to mean something and the day
+is genuinely lumpy  a flat day gets no invented pattern. Plan offers the window it found as one tap, and the
+coach leans in during it whether or not you accepted.
+
+### Movement, because it is the only tool here with a dose behind it
+
+Eight guided sessions with a step-by-step timer: a five-minute walk, a proper fifteen-minute one, easy running
+intervals, a push-up ladder, a bodyweight circuit, morning and wind-down mobility flows, and a three-minute
+desk reset that needs no floor space. Every step carries its own cue, so a pose you have never heard of still
+tells you what to do, and a short buzz on each change means a walk can be followed with the phone in a pocket.
+
+The walking and running sessions are checked against the pedometer when step counting is on, so they show real
+distance covered rather than time elapsed  and you can rate the moment before and after, which makes these the
+only tools in the app that can show you your own number falling.
+
+### What the next few days actually cost
+
+Alongside the recovery ladder  which says what is being won, and reaches out ten years  sits its counterpart:
+one hill, drawn from published CDC and NHS timings, with a marker showing where you are on it. Symptoms begin
+around four hours, summit across the second and third day, and fade over three to four weeks. Knowing the top
+is day three *before* standing on it is the protective part; someone who believes it climbs forever has no
+reason to keep waiting. It retires itself after a month rather than sitting there announcing that nothing is
+happening.
+
+### Values, not just a paragraph
+
+The free-text reason is the wrong shape for the moment it matters  nobody reads a paragraph at minute two of a
+bad afternoon. Alongside it you can keep up to five short lines in your own words. They sit on Today where a
+craving finds them, and the coach reaches for them instead of generic encouragement.
+
 ### The gap widens as you earn it
 
 Set a starting minimum gap and Pace grows it for you: every *N* steady days  days finished at or below your

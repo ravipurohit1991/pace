@@ -103,7 +103,23 @@ data class PlanSettings(
     val stepCountingEnabled: Boolean = false,
     /** Used only to derive stride length for the distance figure. 0 means "not stated". */
     val heightCentimetres: Int = 0,
-)
+    /**
+     * What this is for, in their words. [personalReason] is the paragraph; these are the handful
+     * of short lines worth putting in front of someone mid-craving, when a paragraph is too much
+     * to read.
+     */
+    val personalValues: List<String> = emptyList(),
+    /** Whether the coach runs its own daily agenda rather than only answering when spoken to. */
+    val autoCoachEnabled: Boolean = true,
+    val workStartMinutes: Int = 9 * 60,
+    val workEndMinutes: Int = 17 * 60,
+    val moveInvitesPerDay: Int = 2,
+) {
+    companion object {
+        const val MAX_VALUES = 5
+        const val MAX_VALUE_CHARS = 60
+    }
+}
 
 /** Ollama Cloud coach configuration. The key is held encrypted at rest. */
 data class AiSettings(

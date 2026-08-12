@@ -141,6 +141,24 @@ message PacePreferences {
   // Stride length is derived from this; 0 means "not stated" and falls back to the default.
   int32 height_centimetres = 76;
   bool step_counting_enabled = 77;
+
+  // What they are doing this for, in their own words. Up to five, surfaced at the moment they are
+  // least able to remember any of them.
+  repeated string personal_values = 79;
+
+  // The coach's own daily agenda: a morning plan, invitations to move during the day, and an
+  // evening line. Inverted so proto3's false default means an enabled coach also runs its agenda.
+  bool auto_coach_disabled = 80;
+  int32 work_start_minutes = 81;
+  int32 work_end_minutes = 82;
+  int32 move_invites_per_day = 83;
+
+  // Agenda bookkeeping: which beats have already gone out, so none of them repeats.
+  string agenda_morning_date = 84;
+  string agenda_evening_date = 85;
+  string agenda_move_date = 86;
+  int32 agenda_move_count = 87;
+  int64 agenda_last_move_epoch_ms = 88;
 }
 
 enum WidgetStateProto {
