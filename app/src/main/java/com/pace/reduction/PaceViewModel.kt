@@ -15,6 +15,8 @@ import com.pace.reduction.domain.CoachImageMemory
 import com.pace.reduction.domain.ProgressCalculator
 import com.pace.reduction.domain.ProgressMetrics
 import com.pace.reduction.domain.AdaptiveSpacing
+import com.pace.reduction.domain.CalendarHistory
+import com.pace.reduction.domain.CalendarHistoryBuilder
 import com.pace.reduction.domain.QuitMetrics
 import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.domain.QuitProgress
@@ -24,6 +26,8 @@ import com.pace.reduction.domain.StepMetrics
 import com.pace.reduction.domain.SpacingProgress
 import com.pace.reduction.domain.UrgePattern
 import com.pace.reduction.domain.UrgePatterns
+import com.pace.reduction.domain.WeeklyReview
+import com.pace.reduction.domain.WeeklyReviewCalculator
 import com.pace.reduction.domain.WithdrawalStatus
 import com.pace.reduction.domain.WithdrawalTimeline
 import com.pace.reduction.data.repository.PaceRepository.Companion.MOVE_TOOL_PREFIX
@@ -42,6 +46,8 @@ import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.WeekFields
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -70,6 +76,10 @@ data class PaceUiState(
     val urgeSessionCount: Int = 0,
     val urgeSessions: List<UrgeSession> = emptyList(),
     val progress: ProgressMetrics? = null,
+    /** A quarter of history as weeks under each other, for reading the shape of a month. */
+    val calendar: CalendarHistory? = null,
+    /** This week against the same days of last week. */
+    val weeklyReview: WeeklyReview? = null,
     val quit: QuitMetrics? = null,
     val spacing: SpacingProgress? = null,
     val achievements: List<Achievement> = emptyList(),
@@ -231,6 +241,25 @@ class PaceViewModel(
             cigarettesPerPack = core.settings.cigarettesPerPack,
             rewardTarget = core.settings.rewardTarget,
         )
+        // Whatever the locale calls the start of the week, so the grid and the comparison agree
+        // with the calendar the user already has on their wall.
+        val firstDayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+        val calendar = CalendarHistoryBuilder.build(
+            today = core.now.atZone(zone).toLocalDate(),
+            zoneId = zone,
+            logs = core.logs,
+            snapshots = core.snapshots,
+            firstDayOfWeek = firstDayOfWeek,
+        )
+        val weeklyReview = WeeklyReviewCalculator.calculate(
+            today = core.now.atZone(zone).toLocalDate(),
+            zoneId = zone,
+            logs = core.logs,
+            snapshots = core.snapshots,
+            pricePerPack = core.settings.pricePerPack,
+            cigarettesPerPack = core.settings.cigarettesPerPack,
+            firstDayOfWeek = firstDayOfWeek,
+        )
         // Pacing runs on the adaptive gap so the app and the widget agree on the next window.
         val spacing = AdaptiveSpacing.progress(core.settings, progress.days)
         val today = PacingCalculator.calculate(
@@ -270,6 +299,8 @@ class PaceViewModel(
             urgeSessionCount = core.sessions.size,
             urgeSessions = core.sessions,
             progress = progress,
+            calendar = calendar,
+            weeklyReview = weeklyReview,
             quit = quit,
             spacing = spacing,
             achievements = achievements,
