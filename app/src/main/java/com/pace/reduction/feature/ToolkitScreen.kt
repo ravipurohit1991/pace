@@ -1,6 +1,7 @@
 package com.pace.reduction.feature
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -138,6 +139,12 @@ internal fun EnhancedToolkitScreen(
         )
         completedTool = null
         activeTool = null
+    }
+
+    // An open tool or session takes over the whole screen, so back closes it — the same thing its
+    // own close button does — rather than skipping past it to the previous screen.
+    BackHandler(enabled = activeMove != null || activeTool != null) {
+        if (activeMove != null) activeMove = null else activeTool = null
     }
 
     val move = activeMove?.let(MoveCatalogue::byId)

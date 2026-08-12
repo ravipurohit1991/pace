@@ -2,6 +2,7 @@ package com.pace.reduction.core.designsystem
 
 import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.RepeatMode
@@ -15,7 +16,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.InteractionSource
@@ -76,6 +80,49 @@ data class PaceMotion(val level: MotionLevel = MotionLevel.FULL) {
 }
 
 val LocalMotion = staticCompositionLocalOf { PaceMotion() }
+
+/**
+ * Moving between screens that are peers rather than parent and child — the four tabs.
+ *
+ * The leaving screen is fully gone before the arriving one begins, and that stagger is the whole
+ * point: two dense layouts crossfading through each other reads as a double exposure, with one
+ * screen's headings legible through the other's, rather than as motion. Nothing slides, because
+ * sliding claims a hierarchy the bottom bar does not have — the tabs sit beside each other.
+ */
+fun PaceMotion.fadeThrough(): ContentTransform {
+    val leaving = duration(90)
+    val arriving = duration(210)
+    return (
+        fadeIn(tween(arriving, delayMillis = leaving, easing = FastOutSlowInEasing)) +
+            scaleIn(
+                tween(arriving, delayMillis = leaving, easing = FastOutSlowInEasing),
+                initialScale = 0.96f,
+            )
+        ) togetherWith fadeOut(tween(leaving))
+}
+
+/**
+ * Moving between a screen and one stacked on top of it: the plan, settings, history, a call.
+ *
+ * Both screens travel the same way at once, so the pair reads as one sheet of paper moving under
+ * the eye. [forward] false plays the identical motion in reverse, which is what makes a back press
+ * feel like an undo of the tap that opened the screen rather than a second, unrelated journey.
+ */
+fun PaceMotion.slideAlong(forward: Boolean): ContentTransform {
+    val leaving = duration(90)
+    val arriving = duration(220)
+    val travel = duration(320)
+    val towards = if (forward) 1 else -1
+    return (
+        slideInHorizontally(tween(travel, easing = FastOutSlowInEasing)) { width ->
+            towards * width / 6
+        } + fadeIn(tween(arriving, delayMillis = leaving, easing = FastOutSlowInEasing))
+        ) togetherWith (
+        slideOutHorizontally(tween(travel, easing = FastOutSlowInEasing)) { width ->
+            -towards * width / 6
+        } + fadeOut(tween(leaving))
+        )
+}
 
 /**
  * Combines the app's own setting with the platform's animator scale, so a user who has turned

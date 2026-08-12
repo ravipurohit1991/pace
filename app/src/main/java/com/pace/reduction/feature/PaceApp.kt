@@ -6,8 +6,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -105,6 +103,8 @@ import com.pace.reduction.R
 import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.breathe
 import com.pace.reduction.core.designsystem.entrance
+import com.pace.reduction.core.designsystem.fadeThrough
+import com.pace.reduction.core.designsystem.slideAlong
 import com.pace.reduction.core.designsystem.pressScale
 import com.pace.reduction.core.designsystem.pulseAlpha
 import com.pace.reduction.domain.BadgeCatalogue
@@ -267,17 +267,22 @@ private fun MainShell(
         activity?.intent?.getStringExtra(com.pace.reduction.MainActivity.EXTRA_MOVE_SESSION)
             .also { activity?.intent?.removeExtra(com.pace.reduction.MainActivity.EXTRA_MOVE_SESSION) }
     }
-    val initialDestination: NavKey = remember {
+    // Today sits under every other destination, including the ones a notification opens straight
+    // into. Back has to have somewhere to go: a stack holding only the screen you are looking at
+    // gives the system nothing to pop, and the press closes the app instead.
+    val initialStack: List<NavKey> = remember {
         val requested = activity?.intent?.getStringExtra(com.pace.reduction.MainActivity.EXTRA_DESTINATION)
         activity?.intent?.removeExtra(com.pace.reduction.MainActivity.EXTRA_DESTINATION)
         when (requested) {
-            com.pace.reduction.MainActivity.DESTINATION_TOOLKIT -> ToolkitDestination
-            com.pace.reduction.MainActivity.DESTINATION_COACH -> CoachDestination
-            com.pace.reduction.MainActivity.DESTINATION_CALL -> VoiceCallDestination
-            else -> TodayDestination
+            com.pace.reduction.MainActivity.DESTINATION_TOOLKIT -> listOf(TodayDestination, ToolkitDestination)
+            com.pace.reduction.MainActivity.DESTINATION_COACH -> listOf(TodayDestination, CoachDestination)
+            // A call is something you leave back into the conversation it belongs to.
+            com.pace.reduction.MainActivity.DESTINATION_CALL ->
+                listOf(TodayDestination, CoachDestination, VoiceCallDestination)
+            else -> listOf(TodayDestination)
         }
     }
-    val backStack = rememberNavBackStack(initialDestination)
+    val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val navigationItems = listOf(
         NavigationItem(TodayDestination, R.string.nav_today, Icons.Outlined.Home),
         NavigationItem(CoachDestination, R.string.nav_coach, Icons.Outlined.Forum),
@@ -285,9 +290,24 @@ private fun MainShell(
         NavigationItem(ProgressDestination, R.string.nav_progress, Icons.Outlined.BarChart),
     )
     val current = backStack.lastOrNull()
+    // Tabs are siblings rather than a history: moving between them replaces the stack instead of
+    // piling onto it, so the bar never grows a trail of its own. Today stays underneath so back
+    // from any tab lands home, and only a back press from home closes the app.
+    val switchTab: (NavKey) -> Unit = { key ->
+        backStack.clear()
+        backStack.add(TodayDestination)
+        if (key != TodayDestination) backStack.add(key)
+    }
     val motion = LocalMotion.current
     val haptics = LocalHapticFeedback.current
     val hapticsEnabled = uiState.settings.hapticsEnabled
+    // Carried by the four tab destinations, so a move that involves one of them fades through in
+    // both directions — including the back press out of a tab, which is a move between peers even
+    // though the stack happens to record it as a pop.
+    val tabTransition = remember(motion) {
+        NavDisplay.transitionSpec { motion.fadeThrough() } +
+            NavDisplay.popTransitionSpec { motion.fadeThrough() }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -302,8 +322,7 @@ private fun MainShell(
                                 if (hapticsEnabled) {
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 }
-                                backStack.clear()
-                                backStack.add(item.key)
+                                switchTab(item.key)
                             }
                         },
                         icon = {
@@ -330,43 +349,22 @@ private fun MainShell(
                 if (backStack.size > 1) backStack.removeLastOrNull()
             },
             // The library default is a 700ms crossfade, which on a phone reads as lag rather than
-            // grace. A short slide in the direction of travel says which way the stack moved.
-            transitionSpec = {
-                (
-                    slideInHorizontally(motion.eased(300)) { width -> width / 5 } +
-                        fadeIn(motion.eased(240))
-                    ) togetherWith (
-                    slideOutHorizontally(motion.eased(300)) { width -> -width / 12 } +
-                        fadeOut(motion.eased(180))
-                    )
-            },
-            popTransitionSpec = {
-                (
-                    slideInHorizontally(motion.eased(300)) { width -> -width / 12 } +
-                        fadeIn(motion.eased(240))
-                    ) togetherWith (
-                    slideOutHorizontally(motion.eased(300)) { width -> width / 5 } +
-                        fadeOut(motion.eased(180))
-                    )
-            },
+            // grace. This is the fallback for screens stacked on top of a tab — the plan, settings,
+            // history, a call — where a slide is the honest description of what just happened.
+            transitionSpec = { motion.slideAlong(forward = true) },
+            popTransitionSpec = { motion.slideAlong(forward = false) },
             entryProvider = entryProvider {
-                entry<TodayDestination> {
+                entry<TodayDestination>(metadata = tabTransition) {
                     TodayScreen(
                         uiState = uiState,
                         onLog = onLog,
-                        onOpenToolkit = {
-                            backStack.clear()
-                            backStack.add(ToolkitDestination)
-                        },
-                        onOpenCoach = {
-                            backStack.clear()
-                            backStack.add(CoachDestination)
-                        },
+                        onOpenToolkit = { switchTab(ToolkitDestination) },
+                        onOpenCoach = { switchTab(CoachDestination) },
                         onOpenPlan = { backStack.add(PlanDestination) },
                         onOpenSettings = { backStack.add(SettingsDestination) },
                     )
                 }
-                entry<CoachDestination> {
+                entry<CoachDestination>(metadata = tabTransition) {
                     CoachScreen(
                         uiState = uiState,
                         viewModel = viewModel,
@@ -383,7 +381,7 @@ private fun MainShell(
                 entry<PlanDestination> {
                     PlanScreen(uiState, onSavePlan, onBack = { backStack.removeLastOrNull() })
                 }
-                entry<ToolkitDestination> {
+                entry<ToolkitDestination>(metadata = tabTransition) {
                     EnhancedToolkitScreen(
                         uiState = uiState,
                         viewModel = viewModel,
@@ -391,7 +389,7 @@ private fun MainShell(
                         requestedMoveSession = requestedMove,
                     )
                 }
-                entry<ProgressDestination> {
+                entry<ProgressDestination>(metadata = tabTransition) {
                     ProgressScreen(
                         uiState = uiState,
                         onOpenSettings = { backStack.add(SettingsDestination) },
