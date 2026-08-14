@@ -239,6 +239,20 @@ working miniature sits above the controls  a widget is the one surface you canno
 
 ---
 
+## Install
+
+Pace is not on Google Play. Grab the APK from the
+[latest release](https://github.com/ravipurohit1991/pace/releases/latest) and install it directly.
+
+For automatic updates, install [Obtainium](https://github.com/ImranR98/Obtainium) and add this
+repository's URL — it watches GitHub Releases and prompts you when a new version lands.
+
+Minimum supported version is Android 8 / API 26. Every release is built and signed by
+[GitHub Actions](.github/workflows/release.yml) from the tagged commit; see
+[docs/RELEASING.md](docs/RELEASING.md).
+
+---
+
 ## Setting up the AI coach
 
 1. Create a key at [ollama.com/settings/keys](https://ollama.com/settings/keys).
@@ -374,3 +388,10 @@ Approach informed by the open-source quit-smoking community, including
 [quit-smoking-instantly](https://github.com/xiaolai/quit-smoking-instantly), and
 [Quit-Smoke-App](https://github.com/trizin/Quit-Smoke-App). Recovery timings follow published CDC and NHS
 cessation guidance. Puzzles by Gabriele Cirulli and Simon Tatham.
+
+---
+
+## License
+
+Pace is free software licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
+Dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,126 @@
+name: Release
+
+# Tagging is the whole release trigger: `git tag v0.2.0 && git push origin v0.2.0`
+# builds a signed APK, publishes it as a GitHub Release, and IzzyOnDroid picks it up
+# from there on its next scan.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. v0.2.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # versionName is the tag without its leading v. versionCode is that semver packed
+      # into an integer (0.2.0 -> 200, 1.4.12 -> 10412) so it rises monotonically without
+      # depending on commit counts, which rewriting history would break.
+      - name: Derive version
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          NAME="${TAG#v}"
+          if ! printf '%s' "$NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          MAJOR="${NAME%%.*}"
+          REST="${NAME#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+          CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Building $NAME (versionCode $CODE)"
+
+      # Fail before the build rather than quietly publishing an unsigned APK, which would
+      # install for nobody and permanently confuse the update chain.
+      - name: Check signing secrets
+        env:
+          KEYSTORE: ${{ secrets.PACE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PACE_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PACE_KEY_PASSWORD }}
+        run: |
+          for v in KEYSTORE STORE_PASSWORD KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing repository secret for $v"
+              exit 1
+            fi
+          done
+
+      - name: Decode keystore
+        env:
+          KEYSTORE: ${{ secrets.PACE_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/pace-release.jks"
+
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Build signed release APK
+        env:
+          PACE_VERSION_NAME: ${{ steps.version.outputs.name }}
+          PACE_VERSION_CODE: ${{ steps.version.outputs.code }}
+          PACE_KEYSTORE_PASSWORD: ${{ secrets.PACE_KEYSTORE_PASSWORD }}
+          PACE_KEY_ALIAS: ${{ secrets.PACE_KEY_ALIAS }}
+          PACE_KEY_PASSWORD: ${{ secrets.PACE_KEY_PASSWORD }}
+        run: |
+          export PACE_KEYSTORE_FILE="$RUNNER_TEMP/pace-release.jks"
+          ./gradlew assembleRelease --stacktrace
+
+      # A v1 signature alone would exclude Android 11+ verification; confirm the APK really
+      # carries a scheme v2/v3 signature before it goes out to anyone.
+      - name: Verify signature
+        run: |
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          cp "$APK" "pace-${{ steps.version.outputs.name }}.apk"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          NAME: ${{ steps.version.outputs.name }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          NOTES_FILE="fastlane/metadata/android/en-US/changelogs/${CODE}.txt"
+          if [ -f "$NOTES_FILE" ]; then
+            NOTES=$(cat "$NOTES_FILE")
+          else
+            NOTES="Pace $NAME"
+          fi
+          printf '%s\n\n---\n\nInstall the APK directly, or track this repo in [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates.\n' "$NOTES" > release-notes.md
+          gh release create "$TAG" "pace-${NAME}.apk" \
+            --title "Pace $NAME" \
+            --notes-file release-notes.md
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pace-${{ steps.version.outputs.name }}
+          path: pace-${{ steps.version.outputs.name }}.apk
+          retention-days: 90

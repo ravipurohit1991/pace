@@ -1,0 +1,8 @@
+First public release.
+
+- Tap-to-log tracking with a ceiling, minimum spacing, morning hold and quiet hours
+- Home-screen widget with a 12-second undo
+- Opt-in AI coach (bring your own Ollama Cloud key) with four personalities, streaming replies, riddles and a voice-call mode
+- Body-recovery timeline, badges, distraction toolkit
+- Progress history by day, week and quarter
+- Everything stored locally; no account, no analytics
