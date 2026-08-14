@@ -14,6 +14,24 @@ val localProperties = Properties().apply {
 fun localValue(key: String, fallback: String = ""): String =
     (localProperties.getProperty(key) ?: System.getenv(key.replace('.', '_').uppercase()) ?: fallback).trim()
 
+/**
+ * Release signing material. Locally it comes from `keystore.properties` (git-ignored, and pointing at
+ * a keystore that lives outside the repo); in CI the same four values arrive as environment variables
+ * decoded from GitHub secrets. When neither is present the release build stays unsigned rather than
+ * failing, so a plain `assembleRelease` still works for anyone checking out the source.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun signingValue(key: String, env: String): String? =
+    (keystoreProperties.getProperty(key) ?: System.getenv(env))?.trim()?.takeIf(String::isNotEmpty)
+
+// Tags drive the published version; the fallbacks keep local builds working off a bare checkout.
+val paceVersionCode = (System.getenv("PACE_VERSION_CODE") ?: "1").toInt()
+val paceVersionName = System.getenv("PACE_VERSION_NAME") ?: "0.1.0"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -30,8 +48,8 @@ android {
         applicationId = "com.pace.reduction"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = paceVersionCode
+        versionName = paceVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -46,6 +64,18 @@ android {
         buildConfigField("int", "SEED_SPACING", localValue("pace.seedSpacing", "0"))
     }
 
+    signingConfigs {
+        create("release") {
+            val store = signingValue("storeFile", "PACE_KEYSTORE_FILE")
+            if (store != null) {
+                storeFile = file(store)
+                storePassword = signingValue("storePassword", "PACE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "PACE_KEY_ALIAS") ?: "pace"
+                keyPassword = signingValue("keyPassword", "PACE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -58,6 +88,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
 

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Matches the JBR that Android Studio ships for this project, so CI and local
+      # builds resolve the same toolchain.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
+
+      # lint.abortOnError is true in app/build.gradle.kts, so this gates the branch.
+      - name: Lint
+        run: ./gradlew lint --stacktrace
+
+      # No signing secrets here: this only proves the release variant, with minify and
+      # resource shrinking on, still assembles. The signed artifact comes from release.yml.
+      - name: Assemble release (unsigned)
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 7
