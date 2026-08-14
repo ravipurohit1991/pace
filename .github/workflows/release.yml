@@ -1,8 +1,8 @@
 name: Release
 
 # Tagging is the whole release trigger: `git tag v0.2.0 && git push origin v0.2.0`
-# builds a signed APK, publishes it as a GitHub Release, and IzzyOnDroid picks it up
-# from there on its next scan.
+# builds a signed APK and publishes it as a GitHub Release, which is where both direct
+# downloads and Obtainium's update checks read from.
 on:
   push:
     tags: ['v*']
@@ -107,7 +107,7 @@ jobs:
           NAME: ${{ steps.version.outputs.name }}
           CODE: ${{ steps.version.outputs.code }}
         run: |
-          NOTES_FILE="fastlane/metadata/android/en-US/changelogs/${CODE}.txt"
+          NOTES_FILE="changelogs/${CODE}.txt"
           if [ -f "$NOTES_FILE" ]; then
             NOTES=$(cat "$NOTES_FILE")
           else
