@@ -251,6 +251,13 @@ Minimum supported version is Android 8 / API 26. Every release is built and sign
 [GitHub Actions](.github/workflows/release.yml) from the tagged commit; see
 [docs/RELEASING.md](docs/RELEASING.md).
 
+To confirm an APK really came from this project, check the signing certificate:
+
+```sh
+apksigner verify --print-certs pace-<version>.apk
+# SHA-256: 80:29:7E:4E:3A:05:AD:6C:1B:B6:B7:A3:A5:00:31:74:FB:D7:02:2A:AF:FA:19:B6:B2:FA:16:95:0E:24:63:AB
+```
+
 ---
 
 ## Setting up the AI coach
