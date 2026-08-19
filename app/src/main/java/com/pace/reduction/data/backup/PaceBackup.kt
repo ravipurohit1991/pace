@@ -51,6 +51,11 @@ data class PlanBackup(
     val themeMode: String,
     /** Defaulted so backups written before values existed still import. */
     val personalValues: List<String> = emptyList(),
+    val drinkQuickLogEnabled: Boolean = true,
+    val coffeeTrackingEnabled: Boolean = true,
+    val alcoholTrackingEnabled: Boolean = true,
+    val otherBeverageTrackingEnabled: Boolean = true,
+    val otherBeverageLabel: String = "Other",
 )
 
 @Serializable

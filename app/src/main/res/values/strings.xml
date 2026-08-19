@@ -44,6 +44,17 @@
     <string name="beverage_alcohol">Alcohol</string>
     <string name="beverage_other">Other</string>
     <string name="beverage_add_accessible">Log %1$s. %2$d logged today.</string>
+    <string name="tracking_settings_title">Habit tracking</string>
+    <string name="tracking_settings_body">Choose which quick-log actions belong on Today. Your existing ledger is always preserved.</string>
+    <string name="tracking_quick_log">Show drinks on Today</string>
+    <string name="tracking_quick_log_body">Keep the compact drink logger beneath the main cigarette actions.</string>
+    <string name="tracking_coffee_body">Show a one-tap coffee counter.</string>
+    <string name="tracking_alcohol_body">Show a one-tap alcohol counter.</string>
+    <string name="tracking_other_title">Other beverage</string>
+    <string name="tracking_other_body">Keep one flexible beverage category.</string>
+    <string name="tracking_other_label">Custom label</string>
+    <string name="tracking_preserves_history">Turning a tracker off only hides its quick-log action; it never deletes recorded history.</string>
+    <string name="tracker_character_count">%1$d of %2$d characters</string>
     <string name="plan_saved">Plan saved.</string>
     <string name="check_in_saved">Check-in saved.</string>
     <string name="backup_exported">Export written.</string>
@@ -319,9 +330,9 @@
     <string name="rescue_offline">Turn on the AI coach in settings for a tailored plan. The offline tools below always work.</string>
     <string name="coach_personality">Personality</string>
 
-    <string name="history_title">Edit history</string>
-    <string name="history_open">Edit daily history</string>
-    <string name="history_open_body">Add a cigarette you forgot to log, or remove one counted twice.</string>
+    <string name="history_title">Open ledger</string>
+    <string name="history_open">Habit ledger</string>
+    <string name="history_open_body">Review, add, and correct cigarettes and drinks in one auditable daily timeline.</string>
     <string name="history_previous_day">Previous day</string>
     <string name="history_next_day">Next day</string>
     <string name="history_day_count">%1$d logged · ceiling %2$d</string>
@@ -337,6 +348,35 @@
     <string name="history_reversed">Reversed</string>
     <string name="history_updated">History updated.</string>
     <string name="history_rejected">That time is in the future.</string>
+    <string name="ledger_title">Ledger</string>
+    <string name="ledger_subtitle">One timeline. Every logged choice.</string>
+    <plurals name="ledger_event_count">
+        <item quantity="one">%1$d active event</item>
+        <item quantity="other">%1$d active events</item>
+    </plurals>
+    <string name="ledger_cigarettes">Cigarettes</string>
+    <string name="ledger_check_ins">Check-ins</string>
+    <string name="ledger_steps">Steps</string>
+    <string name="ledger_drinks">Drinks</string>
+    <string name="ledger_add_title">Add an entry</string>
+    <string name="ledger_use_now">Use current time</string>
+    <string name="ledger_add_action">Add %1$s</string>
+    <string name="ledger_add_hint">Corrections update the relevant history and trends. Drink entries never alter the cigarette plan.</string>
+    <string name="ledger_timeline">Daily timeline</string>
+    <string name="ledger_empty">No entries match this view for the selected day.</string>
+    <string name="ledger_filter_all">All</string>
+    <string name="ledger_filter_cigarettes">Cigarettes</string>
+    <string name="ledger_filter_drinks">Drinks</string>
+    <string name="ledger_filter_check_ins">Check-ins</string>
+    <string name="ledger_recorded_at">%1$s · %2$s</string>
+    <string name="ledger_reversed_at">%1$s · %2$s · reversed</string>
+    <string name="ledger_open_action">Open the full ledger</string>
+    <string name="trend_title">Eight-week trends</string>
+    <string name="trend_body">Compare one measure at a time. The current week fills as it happens.</string>
+    <string name="trend_total">8-week total</string>
+    <string name="trend_weekly_average">Weekly average</string>
+    <string name="trend_this_week">This week</string>
+    <string name="trend_accessible">%1$s by week: %2$s</string>
 
     <string name="widget_until_next_label">to next</string>
     <string name="widget_talk">Talk</string>

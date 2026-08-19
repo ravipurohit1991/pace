@@ -12,6 +12,7 @@ object PaceBackupValidator {
         require(plan.weekendWakeMinutes in 0..1439 && plan.reductionStep in 1..5 && plan.reviewIntervalDays in 7..28)
         require(plan.cigarettesPerPack in 1..100 && plan.pricePerPack >= 0 && plan.rewardTarget >= 0)
         require(plan.currencyCode.length == 3 && plan.personalReason.length <= 500 && plan.rewardName.length <= 100)
+        require(plan.otherBeverageLabel.length <= 24)
         require(plan.coachingTone in setOf("SUPPORTIVE", "DIRECT", "TOUGH"))
         require(plan.reminderIntensity in setOf("OFF", "GENTLE", "STANDARD"))
         require(plan.themeMode in setOf("SYSTEM", "LIGHT", "DARK"))
@@ -27,7 +28,7 @@ object PaceBackupValidator {
         backup.beverageLogs.forEach {
             require(it.id.isNotBlank() && it.occurredAtEpochMs in 0..latestAllowed && it.recordedAtEpochMs in 0..latestAllowed)
             require(it.type in setOf("COFFEE", "ALCOHOL", "OTHER"))
-            require(it.source in setOf("APP", "IMPORT"))
+            require(it.source in setOf("APP", "MANUAL", "IMPORT"))
         }
         backup.urgeSessions.forEach {
             require(it.id.isNotBlank() && it.startedAtEpochMs in 0..latestAllowed)

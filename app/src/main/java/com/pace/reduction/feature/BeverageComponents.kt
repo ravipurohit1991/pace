@@ -50,6 +50,8 @@ internal fun BeverageTrackerCard(
     counts: BeverageCounts,
     onLog: (BeverageType) -> Unit,
     hapticsEnabled: Boolean,
+    enabledTypes: Set<BeverageType>,
+    otherLabel: String,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -64,8 +66,8 @@ internal fun BeverageTrackerCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BeverageOptions.forEach { option ->
-                val label = stringResource(option.label)
+            BeverageOptions.filter { it.type in enabledTypes }.forEach { option ->
+                val label = if (option.type == BeverageType.OTHER) otherLabel else stringResource(option.label)
                 val count = counts[option.type]
                 val description = stringResource(R.string.beverage_add_accessible, label, count)
                 FilledTonalButton(

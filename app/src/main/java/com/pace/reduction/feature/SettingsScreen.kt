@@ -83,6 +83,21 @@ internal fun SettingsScreen(
     var privateOnLockScreen by rememberSaveable(uiState.settings.notificationPrivate) {
         mutableStateOf(uiState.settings.notificationPrivate)
     }
+    var drinkQuickLog by rememberSaveable(uiState.settings.drinkQuickLogEnabled) {
+        mutableStateOf(uiState.settings.drinkQuickLogEnabled)
+    }
+    var coffeeTracking by rememberSaveable(uiState.settings.coffeeTrackingEnabled) {
+        mutableStateOf(uiState.settings.coffeeTrackingEnabled)
+    }
+    var alcoholTracking by rememberSaveable(uiState.settings.alcoholTrackingEnabled) {
+        mutableStateOf(uiState.settings.alcoholTrackingEnabled)
+    }
+    var otherTracking by rememberSaveable(uiState.settings.otherBeverageTrackingEnabled) {
+        mutableStateOf(uiState.settings.otherBeverageTrackingEnabled)
+    }
+    var otherLabel by rememberSaveable(uiState.settings.otherBeverageLabel) {
+        mutableStateOf(uiState.settings.otherBeverageLabel)
+    }
     var deleteStepTwo by rememberSaveable { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
     var notificationEducation by rememberSaveable { mutableStateOf(false) }
@@ -128,6 +143,22 @@ internal fun SettingsScreen(
                     }
                 },
                 onChange = viewModel::saveWidgetSettings,
+            )
+        }
+        item {
+            TrackingSection(
+                quickLog = drinkQuickLog,
+                coffee = coffeeTracking,
+                alcohol = alcoholTracking,
+                other = otherTracking,
+                otherLabel = otherLabel,
+                onQuickLogChange = { drinkQuickLog = it },
+                onCoffeeChange = { coffeeTracking = it },
+                onAlcoholChange = { alcoholTracking = it },
+                onOtherChange = { otherTracking = it },
+                onOtherLabelChange = {
+                    if (it.length <= PlanSettings.MAX_TRACKER_LABEL_CHARS) otherLabel = it
+                },
             )
         }
         item {
@@ -199,6 +230,11 @@ internal fun SettingsScreen(
                             reminderIntensity = reminder,
                             hapticsEnabled = haptics,
                             notificationPrivate = privateOnLockScreen,
+                            drinkQuickLogEnabled = drinkQuickLog,
+                            coffeeTrackingEnabled = coffeeTracking,
+                            alcoholTrackingEnabled = alcoholTracking,
+                            otherBeverageTrackingEnabled = otherTracking,
+                            otherBeverageLabel = otherLabel.trim().ifBlank { "Other" },
                         ),
                     )
                 },
@@ -286,6 +322,76 @@ internal fun SettingsScreen(
             }
         }
         }
+}
+
+@Composable
+private fun TrackingSection(
+    quickLog: Boolean,
+    coffee: Boolean,
+    alcohol: Boolean,
+    other: Boolean,
+    otherLabel: String,
+    onQuickLogChange: (Boolean) -> Unit,
+    onCoffeeChange: (Boolean) -> Unit,
+    onAlcoholChange: (Boolean) -> Unit,
+    onOtherChange: (Boolean) -> Unit,
+    onOtherLabelChange: (String) -> Unit,
+) {
+    SectionCard {
+        Text(stringResource(R.string.tracking_settings_title), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.tracking_settings_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SettingSwitch(
+            title = stringResource(R.string.tracking_quick_log),
+            body = stringResource(R.string.tracking_quick_log_body),
+            checked = quickLog,
+            onCheckedChange = onQuickLogChange,
+        )
+        SettingSwitch(
+            title = stringResource(R.string.beverage_coffee),
+            body = stringResource(R.string.tracking_coffee_body),
+            checked = coffee,
+            onCheckedChange = onCoffeeChange,
+        )
+        SettingSwitch(
+            title = stringResource(R.string.beverage_alcohol),
+            body = stringResource(R.string.tracking_alcohol_body),
+            checked = alcohol,
+            onCheckedChange = onAlcoholChange,
+        )
+        SettingSwitch(
+            title = stringResource(R.string.tracking_other_title),
+            body = stringResource(R.string.tracking_other_body),
+            checked = other,
+            onCheckedChange = onOtherChange,
+        )
+        if (other) {
+            OutlinedTextField(
+                value = otherLabel,
+                onValueChange = onOtherLabelChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.tracking_other_label)) },
+                supportingText = {
+                    Text(
+                        stringResource(
+                            R.string.tracker_character_count,
+                            otherLabel.length,
+                            PlanSettings.MAX_TRACKER_LABEL_CHARS,
+                        ),
+                    )
+                },
+                singleLine = true,
+            )
+        }
+        Text(
+            stringResource(R.string.tracking_preserves_history),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /** Ollama Cloud key entry, model picker and nudge toggle. */

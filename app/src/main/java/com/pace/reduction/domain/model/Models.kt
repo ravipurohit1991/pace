@@ -81,6 +81,12 @@ data class PlanSettings(
     val reminderIntensity: ReminderIntensity = ReminderIntensity.OFF,
     val notificationPrivate: Boolean = true,
     val hapticsEnabled: Boolean = true,
+    /** Whether the compact drink logger appears on Today. Existing records are never removed. */
+    val drinkQuickLogEnabled: Boolean = true,
+    val coffeeTrackingEnabled: Boolean = true,
+    val alcoholTrackingEnabled: Boolean = true,
+    val otherBeverageTrackingEnabled: Boolean = true,
+    val otherBeverageLabel: String = "Other",
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accentPalette: AccentPalette = AccentPalette.SAGE,
     /** Material You. Overrides [accentPalette] when the device supports it. */
@@ -118,6 +124,7 @@ data class PlanSettings(
     companion object {
         const val MAX_VALUES = 5
         const val MAX_VALUE_CHARS = 60
+        const val MAX_TRACKER_LABEL_CHARS = 24
     }
 }
 

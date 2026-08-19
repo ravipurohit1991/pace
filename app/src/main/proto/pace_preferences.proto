@@ -159,6 +159,13 @@ message PacePreferences {
   string agenda_move_date = 86;
   int32 agenda_move_count = 87;
   int64 agenda_last_move_epoch_ms = 88;
+
+  // Habit tracking. Stored inverted so upgrades preserve the current all-on experience.
+  bool hide_drink_quick_log = 89;
+  bool hide_coffee_tracking = 90;
+  bool hide_alcohol_tracking = 91;
+  bool hide_other_beverage_tracking = 92;
+  string other_beverage_label = 93;
 }
 
 enum WidgetStateProto {

@@ -19,6 +19,9 @@ import com.pace.reduction.domain.CalendarHistory
 import com.pace.reduction.domain.CalendarHistoryBuilder
 import com.pace.reduction.domain.BeverageCounts
 import com.pace.reduction.domain.BeverageTracker
+import com.pace.reduction.domain.HabitMetric
+import com.pace.reduction.domain.HabitTrend
+import com.pace.reduction.domain.HabitTrendBuilder
 import com.pace.reduction.domain.QuitMetrics
 import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.domain.QuitProgress
@@ -76,7 +79,9 @@ data class PaceUiState(
     val settings: PlanSettings = PlanSettings(),
     val today: TodaySummary? = null,
     val activeLogs: List<CigaretteLog> = emptyList(),
+    val activeBeverageLogs: List<BeverageLog> = emptyList(),
     val beveragesToday: BeverageCounts = BeverageCounts(),
+    val habitTrend: HabitTrend? = null,
     val dailyCounts: List<DailyCount> = emptyList(),
     val urgeSessionCount: Int = 0,
     val urgeSessions: List<UrgeSession> = emptyList(),
@@ -313,10 +318,20 @@ class PaceViewModel(
             settings = core.settings,
             today = today,
             activeLogs = core.logs,
+            activeBeverageLogs = core.beverages,
             beveragesToday = BeverageTracker.countsFor(
                 date = core.now.atZone(zone).toLocalDate(),
                 zoneId = zone,
                 logs = core.beverages,
+            ),
+            habitTrend = HabitTrendBuilder.build(
+                today = core.now.atZone(zone).toLocalDate(),
+                zoneId = zone,
+                cigarettes = core.logs,
+                beverages = core.beverages,
+                sessions = core.sessions,
+                stepDays = steps.days,
+                firstDayOfWeek = firstDayOfWeek,
             ),
             dailyCounts = progress.days.takeLast(7).map { DailyCount(it.date, it.count) },
             urgeSessionCount = core.sessions.size,
@@ -718,6 +733,9 @@ class PaceViewModel(
     private val _editorLogs = MutableStateFlow<List<CigaretteLog>>(emptyList())
     val editorLogs: StateFlow<List<CigaretteLog>> = _editorLogs.asStateFlow()
 
+    private val _editorBeverageLogs = MutableStateFlow<List<BeverageLog>>(emptyList())
+    val editorBeverageLogs: StateFlow<List<BeverageLog>> = _editorBeverageLogs.asStateFlow()
+
     fun selectEditorDate(date: LocalDate) {
         if (date.isAfter(LocalDate.now())) return
         _editorDate.value = date
@@ -727,6 +745,41 @@ class PaceViewModel(
     fun refreshEditorLogs() {
         viewModelScope.launch {
             _editorLogs.value = repository.logsOn(_editorDate.value)
+            _editorBeverageLogs.value = repository.beverageLogsOn(_editorDate.value)
+        }
+    }
+
+    fun addLedgerEntry(metric: HabitMetric, hour: Int, minute: Int) {
+        viewModelScope.launch {
+            val moment = _editorDate.value.atTime(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
+            val result = runCatching {
+                when (metric) {
+                    HabitMetric.CIGARETTES -> repository.addLogAt(moment)
+                    HabitMetric.COFFEE -> repository.addBeverageAt(BeverageType.COFFEE, moment)
+                    HabitMetric.ALCOHOL -> repository.addBeverageAt(BeverageType.ALCOHOL, moment)
+                    HabitMetric.OTHER -> repository.addBeverageAt(BeverageType.OTHER, moment)
+                    HabitMetric.CHECK_INS, HabitMetric.STEPS -> error("Read-only ledger metric")
+                }
+            }
+            if (result.isSuccess) {
+                _editorLogs.value = repository.logsOn(_editorDate.value)
+                _editorBeverageLogs.value = repository.beverageLogsOn(_editorDate.value)
+                _events.emit(PaceEvent.HistoryUpdated)
+            } else {
+                _events.emit(PaceEvent.HistoryRejected)
+            }
+        }
+    }
+
+    fun deleteLedgerEntry(metric: HabitMetric, id: String) {
+        viewModelScope.launch {
+            when (metric) {
+                HabitMetric.CIGARETTES -> repository.deleteLog(id)
+                else -> repository.deleteBeverageLog(id)
+            }
+            _editorLogs.value = repository.logsOn(_editorDate.value)
+            _editorBeverageLogs.value = repository.beverageLogsOn(_editorDate.value)
+            _events.emit(PaceEvent.HistoryUpdated)
         }
     }
 
