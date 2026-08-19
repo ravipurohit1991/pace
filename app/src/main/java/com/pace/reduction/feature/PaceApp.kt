@@ -414,6 +414,7 @@ private fun MainShell(
                     ProgressScreen(
                         uiState = uiState,
                         onOpenSettings = { backStack.add(SettingsDestination) },
+                        onOpenLedger = { backStack.add(HistoryDestination) },
                         onToggleSteps = viewModel::setStepCounting,
                     )
                 }
@@ -510,11 +511,18 @@ private fun TodayScreen(
                 }
             }
         }
-        item {
+        val enabledBeverages = buildSet {
+            if (uiState.settings.coffeeTrackingEnabled) add(BeverageType.COFFEE)
+            if (uiState.settings.alcoholTrackingEnabled) add(BeverageType.ALCOHOL)
+            if (uiState.settings.otherBeverageTrackingEnabled) add(BeverageType.OTHER)
+        }
+        if (uiState.settings.drinkQuickLogEnabled && enabledBeverages.isNotEmpty()) item {
             BeverageTrackerCard(
                 counts = uiState.beveragesToday,
                 onLog = onLogBeverage,
                 hapticsEnabled = uiState.settings.hapticsEnabled,
+                enabledTypes = enabledBeverages,
+                otherLabel = uiState.settings.otherBeverageLabel,
                 modifier = Modifier.entrance(2),
             )
         }

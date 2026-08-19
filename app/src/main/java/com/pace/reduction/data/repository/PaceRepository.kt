@@ -325,6 +325,36 @@ class PaceRepository(
         reason = "USER_UNDO",
     ) > 0
 
+    suspend fun addBeverageAt(type: BeverageType, moment: java.time.LocalDateTime): String {
+        val instant = moment.atZone(zoneProvider()).toInstant()
+        require(!instant.isAfter(clock.instant())) { "Cannot log a drink in the future" }
+        val id = UUID.randomUUID().toString()
+        dao.insertBeverageLog(
+            BeverageLogEntity(
+                id = id,
+                type = type.name,
+                occurredAtEpochMs = instant.toEpochMilli(),
+                recordedAtEpochMs = clock.millis(),
+                source = "MANUAL",
+                reversedAtEpochMs = null,
+                reversalReason = null,
+            ),
+        )
+        return id
+    }
+
+    suspend fun beverageLogsOn(date: LocalDate): List<BeverageLog> {
+        val zone = zoneProvider()
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        return dao.allBeverageLogs()
+            .filter { it.occurredAtEpochMs in start until end }
+            .map { it.toDomain() }
+            .sortedBy { it.occurredAt }
+    }
+
+    suspend fun deleteBeverageLog(id: String): Boolean = dao.deleteBeverageLog(id) > 0
+
     suspend fun saveUrgeCheckIn(
         urgeBefore: Int?,
         triggerTags: Set<String>,
@@ -909,6 +939,11 @@ class PaceRepository(
                 hapticsEnabled = plan.hapticsEnabled,
                 themeMode = plan.themeMode.name,
                 personalValues = plan.personalValues,
+                drinkQuickLogEnabled = plan.drinkQuickLogEnabled,
+                coffeeTrackingEnabled = plan.coffeeTrackingEnabled,
+                alcoholTrackingEnabled = plan.alcoholTrackingEnabled,
+                otherBeverageTrackingEnabled = plan.otherBeverageTrackingEnabled,
+                otherBeverageLabel = plan.otherBeverageLabel,
             ),
             logs = dao.allLogs().map {
                 LogBackup(it.id, it.occurredAtEpochMs, it.recordedAtEpochMs, it.source, it.note, it.reversedAtEpochMs, it.reversalReason)
@@ -1119,6 +1154,11 @@ class PaceRepository(
         hapticsEnabled = hapticsEnabled,
         themeMode = ThemeMode.valueOf(themeMode),
         personalValues = personalValues,
+        drinkQuickLogEnabled = drinkQuickLogEnabled,
+        coffeeTrackingEnabled = coffeeTrackingEnabled,
+        alcoholTrackingEnabled = alcoholTrackingEnabled,
+        otherBeverageTrackingEnabled = otherBeverageTrackingEnabled,
+        otherBeverageLabel = otherBeverageLabel.ifBlank { "Other" },
     )
 
     suspend fun refreshWidgetSnapshot(undoLogId: String = "") {
@@ -1465,6 +1505,13 @@ class PaceRepository(
         .setReminderIntensity(plan.reminderIntensity.toProto())
         .setNotificationPrivate(plan.notificationPrivate)
         .setHapticsEnabled(plan.hapticsEnabled)
+        .setHideDrinkQuickLog(!plan.drinkQuickLogEnabled)
+        .setHideCoffeeTracking(!plan.coffeeTrackingEnabled)
+        .setHideAlcoholTracking(!plan.alcoholTrackingEnabled)
+        .setHideOtherBeverageTracking(!plan.otherBeverageTrackingEnabled)
+        .setOtherBeverageLabel(
+            plan.otherBeverageLabel.trim().take(PlanSettings.MAX_TRACKER_LABEL_CHARS),
+        )
         .setThemeMode(plan.themeMode.toProto())
         .setQuitMode(plan.quitMode)
         .setQuitDate(plan.quitDate?.toString().orEmpty())
@@ -1561,6 +1608,13 @@ class PaceRepository(
         },
         notificationPrivate = proto.notificationPrivate,
         hapticsEnabled = proto.hapticsEnabled,
+        drinkQuickLogEnabled = !proto.hideDrinkQuickLog,
+        coffeeTrackingEnabled = !proto.hideCoffeeTracking,
+        alcoholTrackingEnabled = !proto.hideAlcoholTracking,
+        otherBeverageTrackingEnabled = !proto.hideOtherBeverageTracking,
+        otherBeverageLabel = proto.otherBeverageLabel.trim()
+            .take(PlanSettings.MAX_TRACKER_LABEL_CHARS)
+            .ifBlank { "Other" },
         themeMode = when (proto.themeMode) {
             ThemeModeProto.THEME_MODE_LIGHT -> ThemeMode.LIGHT
             ThemeModeProto.THEME_MODE_DARK -> ThemeMode.DARK

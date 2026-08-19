@@ -62,6 +62,7 @@ import java.util.Locale
 internal fun ProgressScreen(
     uiState: PaceUiState,
     onOpenSettings: () -> Unit,
+    onOpenLedger: () -> Unit,
     onToggleSteps: (Boolean) -> Unit,
 ) {
     val metrics = requireNotNull(uiState.progress)
@@ -123,6 +124,16 @@ internal fun ProgressScreen(
         item { SectionHeader(stringResource(R.string.section_history)) }
         uiState.calendar?.let { calendar ->
             item { HistoryCalendarCard(calendar, locale, modifier = Modifier.entrance(2)) }
+        }
+        uiState.habitTrend?.let { trend ->
+            item {
+                HabitTrendCard(
+                    trend = trend,
+                    settings = uiState.settings,
+                    onOpenLedger = onOpenLedger,
+                    modifier = Modifier.entrance(3),
+                )
+            }
         }
         item {
             // A week of bars beside the seven- and thirty-day averages the card already carries;

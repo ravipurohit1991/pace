@@ -48,6 +48,9 @@ interface PaceDao {
     )
     suspend fun reverseBeverageLog(id: String, reversedAtEpochMs: Long, reason: String): Int
 
+    @Query("DELETE FROM beverage_logs WHERE id = :id")
+    suspend fun deleteBeverageLog(id: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDailySnapshot(snapshot: DailyPlanSnapshotEntity): Long
 
