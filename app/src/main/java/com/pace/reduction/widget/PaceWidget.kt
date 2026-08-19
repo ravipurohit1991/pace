@@ -148,6 +148,12 @@ private fun PaceWidgetContent(
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
                 Column(modifier = GlanceModifier.defaultWeight()) {
+                    if (!compact) {
+                        Text(
+                            text = context.getString(R.string.widget_brand),
+                            style = TextStyle(color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                        )
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = snapshot.countToday.toString(),
@@ -177,7 +183,13 @@ private fun PaceWidgetContent(
                 // ticked: it is stated in whole minutes, so a second-by-second clock would spend
                 // fifty-nine redraws out of sixty rewriting the same text.
                 if (countdownTarget != null) {
-                    Column(horizontalAlignment = Alignment.Horizontal.End) {
+                    Column(
+                        modifier = GlanceModifier
+                            .background(Pill)
+                            .cornerRadius(18.dp)
+                            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 5.dp),
+                        horizontalAlignment = Alignment.Horizontal.End,
+                    ) {
                         Text(
                             text = remainingText(context, countdownTarget),
                             maxLines = 1,
@@ -227,10 +239,10 @@ private fun PaceWidgetContent(
 
             // Fills the gap between the stats and the actions when the widget is tall enough to
             // render it whole; clipping a quote mid-word looks worse than omitting it.
-            if (!compact && settings.showQuote && size.height >= 110.dp && snapshot.quote.isNotBlank()) {
+            if (!compact && settings.showQuote && size.height >= 110.dp) {
                 Spacer(GlanceModifier.height(9.dp))
                 Text(
-                    text = snapshot.quote,
+                    text = snapshot.quote.ifBlank { context.getString(R.string.widget_message_default) },
                     maxLines = 3,
                     style = TextStyle(color = Muted, fontSize = 11.sp),
                 )

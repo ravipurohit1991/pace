@@ -1,0 +1,8 @@
+Pace 0.2.0 makes the whole habit record easier to see, correct and understand.
+
+- Added an editable daily ledger for cigarettes, coffee, alcohol and a customizable drink, with check-ins and steps alongside the timeline
+- Added interactive eight-week trends for cigarettes, drinks, check-ins and steps
+- Printed the actual daily cigarette count inside every dated square of the 13-week history
+- Added configurable coffee, alcohol and custom beverage tracking with quick logging on Today
+- Redesigned the home-screen widget with clearer hierarchy and a focused live-countdown panel
+- Refined the app's visual polish and refreshed the README with current emulator screenshots
