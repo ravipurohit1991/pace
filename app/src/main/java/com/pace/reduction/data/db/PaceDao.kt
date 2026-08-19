@@ -33,6 +33,21 @@ interface PaceDao {
     )
     suspend fun reverseLog(id: String, reversedAtEpochMs: Long, reason: String): Int
 
+    @Query("SELECT * FROM beverage_logs WHERE reversedAtEpochMs IS NULL ORDER BY occurredAtEpochMs DESC")
+    fun observeActiveBeverageLogs(): Flow<List<BeverageLogEntity>>
+
+    @Query("SELECT * FROM beverage_logs ORDER BY occurredAtEpochMs ASC")
+    suspend fun allBeverageLogs(): List<BeverageLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertBeverageLog(log: BeverageLogEntity)
+
+    @Query(
+        "UPDATE beverage_logs SET reversedAtEpochMs = :reversedAtEpochMs, " +
+            "reversalReason = :reason WHERE id = :id AND reversedAtEpochMs IS NULL",
+    )
+    suspend fun reverseBeverageLog(id: String, reversedAtEpochMs: Long, reason: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDailySnapshot(snapshot: DailyPlanSnapshotEntity): Long
 
@@ -92,6 +107,9 @@ interface PaceDao {
 
     @Query("DELETE FROM cigarette_logs")
     suspend fun deleteAllLogs()
+
+    @Query("DELETE FROM beverage_logs")
+    suspend fun deleteAllBeverageLogs()
 
     @Query("DELETE FROM urge_sessions")
     suspend fun deleteAllUrgeSessions()

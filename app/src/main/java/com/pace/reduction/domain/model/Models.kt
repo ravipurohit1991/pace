@@ -198,6 +198,18 @@ data class CigaretteLog(
     val reversedAt: Instant?,
 )
 
+/** A lightweight category for drinks that may help explain the shape of a day. */
+enum class BeverageType { COFFEE, ALCOHOL, OTHER }
+
+data class BeverageLog(
+    val id: String,
+    val type: BeverageType,
+    val occurredAt: Instant,
+    val recordedAt: Instant,
+    val source: String,
+    val reversedAt: Instant?,
+)
+
 sealed interface PacingStatus {
     data class Spacing(val earliestWindow: ZonedDateTime) : PacingStatus
     data class WindowMet(val since: ZonedDateTime) : PacingStatus

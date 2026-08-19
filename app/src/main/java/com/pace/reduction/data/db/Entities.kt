@@ -14,6 +14,17 @@ data class CigaretteLogEntity(
     val reversalReason: String?,
 )
 
+@Entity(tableName = "beverage_logs")
+data class BeverageLogEntity(
+    @PrimaryKey val id: String,
+    val type: String,
+    val occurredAtEpochMs: Long,
+    val recordedAtEpochMs: Long,
+    val source: String,
+    val reversedAtEpochMs: Long?,
+    val reversalReason: String?,
+)
+
 @Entity(tableName = "urge_sessions")
 data class UrgeSessionEntity(
     @PrimaryKey val id: String,

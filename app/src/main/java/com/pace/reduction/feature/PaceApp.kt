@@ -111,6 +111,7 @@ import com.pace.reduction.domain.BadgeCatalogue
 import com.pace.reduction.domain.PacingCalculator
 import com.pace.reduction.domain.ReductionPlanner
 import com.pace.reduction.domain.model.CoachingTone
+import com.pace.reduction.domain.model.BeverageType
 import com.pace.reduction.domain.model.PacingStatus
 import com.pace.reduction.domain.model.PlanSettings
 import com.pace.reduction.domain.model.ReminderIntensity
@@ -162,6 +163,8 @@ fun PaceApp(viewModel: PaceViewModel) {
     val loggedMessage = stringResource(R.string.cigarette_logged)
     val undoLabel = stringResource(R.string.undo)
     val undoneMessage = stringResource(R.string.log_undone)
+    val beverageLoggedMessage = stringResource(R.string.beverage_logged)
+    val beverageUndoneMessage = stringResource(R.string.beverage_log_undone)
     val planSavedMessage = stringResource(R.string.plan_saved)
     val checkInSavedMessage = stringResource(R.string.check_in_saved)
     val backupExportedMessage = stringResource(R.string.backup_exported)
@@ -185,7 +188,19 @@ fun PaceApp(viewModel: PaceViewModel) {
                     }
                 }
 
+                is PaceEvent.BeverageLogged -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = beverageLoggedMessage,
+                        actionLabel = undoLabel,
+                        duration = SnackbarDuration.Long,
+                    )
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        viewModel.undoBeverageLog(event.id)
+                    }
+                }
+
                 PaceEvent.LogUndone -> snackbarHostState.showSnackbar(undoneMessage)
+                PaceEvent.BeverageLogUndone -> snackbarHostState.showSnackbar(beverageUndoneMessage)
                 PaceEvent.PlanSaved -> snackbarHostState.showSnackbar(planSavedMessage)
                 PaceEvent.CheckInSaved -> snackbarHostState.showSnackbar(checkInSavedMessage)
                 is PaceEvent.PauseCompleted -> Unit
@@ -363,6 +378,7 @@ private fun MainShell(
                     TodayScreen(
                         uiState = uiState,
                         onLog = onLog,
+                        onLogBeverage = viewModel::logBeverage,
                         onOpenToolkit = { switchTab(ToolkitDestination) },
                         onOpenCoach = { switchTab(CoachDestination) },
                         onOpenPlan = { backStack.add(PlanDestination) },
@@ -430,6 +446,7 @@ private fun MainShell(
 private fun TodayScreen(
     uiState: PaceUiState,
     onLog: () -> Unit,
+    onLogBeverage: (BeverageType) -> Unit,
     onOpenToolkit: () -> Unit,
     onOpenCoach: () -> Unit,
     onOpenPlan: () -> Unit,
@@ -492,6 +509,14 @@ private fun TodayScreen(
                     }
                 }
             }
+        }
+        item {
+            BeverageTrackerCard(
+                counts = uiState.beveragesToday,
+                onLog = onLogBeverage,
+                hapticsEnabled = uiState.settings.hapticsEnabled,
+                modifier = Modifier.entrance(2),
+            )
         }
         if (quit != null && !resting) {
             item {
