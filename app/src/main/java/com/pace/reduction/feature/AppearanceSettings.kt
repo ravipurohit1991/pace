@@ -463,6 +463,12 @@ private fun WidgetPreview(widget: WidgetSettings, accent: AccentPalette) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.widget_brand),
+                        color = muted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text("4", color = onFill, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(4.dp))
@@ -475,7 +481,13 @@ private fun WidgetPreview(widget: WidgetSettings, accent: AccentPalette) {
                     )
                 }
                 if (widget.showCountdown && widget.tick != WidgetTick.OFF) {
-                    Column(horizontalAlignment = Alignment.End) {
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.16f))
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        horizontalAlignment = Alignment.End,
+                    ) {
                         Text(
                             stringResource(R.string.widget_remaining_hours, 1, 42),
                             color = onFill,

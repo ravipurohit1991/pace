@@ -379,6 +379,7 @@
     <string name="trend_accessible">%1$s by week: %2$s</string>
 
     <string name="widget_until_next_label">to next</string>
+    <string name="widget_brand">PACE</string>
     <string name="widget_talk">Talk</string>
     <string name="widget_log_short">Log</string>
     <string name="widget_log_confirm">Sure?</string>

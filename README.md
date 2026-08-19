@@ -10,9 +10,9 @@ Your history never leaves the device. The coach is opt-in, uses **your own** Oll
 message or voice turn you submit, photos you explicitly attach, and the handful of optional grounding numbers
 already on your screen.
 
-| Today | AI coach | Body recovery |
+| Today | Eight-week trends | Editable ledger |
 | --- | --- | --- |
-| ![Today](docs/screenshots/02-today.png) | ![Coach](docs/screenshots/03-coach.png) | ![Recovery](docs/screenshots/07-recovery-timeline.png) |
+| ![Today](docs/screenshots/02-today.png) | ![Eight-week trends](docs/screenshots/05-progress.png) | ![Editable ledger](docs/screenshots/13-history.png) |
 
 ---
 
@@ -151,11 +151,13 @@ reclaimed and more  over 200 badges in total. The low tiers are the point: three
 earned something rather than staring at a distant milestone. Progress groups them by family with the next
 threshold in sight.
 
-### Fix the record when it's wrong
+### One ledger for every logged choice
 
-Settings → Edit history steps through any past day so you can add a moment you forgot to log or delete one
-counted twice. Editing a past day backfills its plan snapshot, so a corrected day starts counting toward
-your averages, steady days and the adaptive gap.
+Settings → Habit ledger opens one dated timeline for cigarettes, coffee, alcohol, your custom drink and
+check-ins. Step through any past day, add a cigarette or drink at the exact time it happened, filter the
+timeline, or delete a duplicate. Check-ins remain read-only evidence, and the daily summary keeps steps in
+view. Correcting an older cigarette entry also backfills its plan snapshot, so the day counts properly toward
+your averages, steady days and adaptive gap.
 
 ### A quarter of history, and whether this week is better than last
 
@@ -166,10 +168,15 @@ against the first two of last week, never against last week's full seven. Compar
 flatters the part, and a screen that congratulates you every Monday morning is worth nothing by Friday. It
 shows what changed: fewer or more logged, clear days gained or lost, whether the longest wait grew.
 
-**Thirteen weeks as a calendar**, rows of weeks under each other with a colour per day — clear, under the
-ceiling, at it, over it. Weeks stacked this way make a bad Friday visible as a column instead of as four
-separate bars a month apart. Days before you started are drawn as blanks rather than as perfect days: a grid
-that shows the month before you installed the app as a wall of green is a grid that lies.
+**Thirteen weeks as a calendar**, rows of weeks under each other with the actual cigarette count printed in
+every dated square and a colour for its relationship to the plan — clear, under the ceiling, at it, over it.
+Weeks stacked this way make a bad Friday visible as a column instead of as four separate bars a month apart.
+Days before you started are drawn as blanks rather than as perfect days: a grid that shows the month before
+you installed the app as a wall of green is a grid that lies.
+
+**Eight-week habit trends** make the wider ledger explorable. Switch among cigarettes, coffee, alcohol, your
+custom drink, check-ins and steps to see the total, weekly average, current-week value and a week-by-week bar
+chart without leaving Progress. The same card opens the ledger when a bar deserves a closer look.
 
 The rest of the screen is grouped rather than stacked — this week, your history, your body, what your history
 shows, milestones — so the part you came for is one heading away instead of ten cards down.
@@ -205,12 +212,13 @@ no AI key.
 
 ### A widget worth keeping
 
-Time until your next window as the headline figure, today's count against the ceiling, a proportional
-ceiling meter, clean-stretch and money pills, today's steps when step counting is on, your badge count, a
-line that refreshes hourly, and Talk and Log actions. The pills are fitted to the width the widget actually
-has, so a narrow one drops the last of them rather than clipping it mid-word. It re-renders exactly when a window ends, so the countdown never outlives the wait. At sleep time,
-the widget switches to a neutral rest face with no countdown, count, clean-stretch statistic, quote, or action;
-the normal view returns at wake time.
+The redesigned card keeps the small Pace label, today's count and status together, then gives the live
+countdown its own raised glass panel. Below them sit the proportional ceiling meter, clean-stretch and money
+pills, today's steps when step counting is on, your badge count, a line that refreshes hourly, and Talk and Log
+actions. The pills are fitted to the width the widget actually has, so a narrow one drops the last of them
+rather than clipping it mid-word. It re-renders exactly when a window ends, so the countdown never outlives
+the wait. At sleep time, the widget switches to a neutral rest face with no countdown, count, clean-stretch
+statistic, quote, or action; the normal view returns at wake time.
 
 Under the meter runs an indeterminate progress bar  the one thing on a home-screen widget that genuinely
 moves, animated by the system with no app process running, so a widget mid-wait never looks frozen. The
