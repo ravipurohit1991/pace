@@ -1,6 +1,7 @@
 package com.pace.reduction.data
 
 import com.pace.reduction.data.backup.LogBackup
+import com.pace.reduction.data.backup.BeverageLogBackup
 import com.pace.reduction.data.backup.PaceBackup
 import com.pace.reduction.data.backup.PaceBackupValidator
 import com.pace.reduction.data.backup.PlanBackup
@@ -16,6 +17,9 @@ class PaceBackupTest {
     fun jsonRoundTripRetainsAuditFields() {
         val backup = validBackup().copy(
             logs = listOf(LogBackup("one", 100, 101, "APP", "note", 200, "USER_UNDO")),
+            beverageLogs = listOf(
+                BeverageLogBackup("coffee", "COFFEE", 110, 111, "APP", null, null),
+            ),
         )
         val decoded = json.decodeFromString(PaceBackup.serializer(), json.encodeToString(PaceBackup.serializer(), backup))
 

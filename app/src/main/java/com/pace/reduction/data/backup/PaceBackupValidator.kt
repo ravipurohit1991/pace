@@ -16,12 +16,18 @@ object PaceBackupValidator {
         require(plan.reminderIntensity in setOf("OFF", "GENTLE", "STANDARD"))
         require(plan.themeMode in setOf("SYSTEM", "LIGHT", "DARK"))
         requireUnique(backup.logs.map { it.id })
+        requireUnique(backup.beverageLogs.map { it.id })
         requireUnique(backup.urgeSessions.map { it.id })
         requireUnique(backup.dailySnapshots.map { it.localDate })
         val latestAllowed = nowEpochMs + 24 * 60 * 60 * 1_000L
         backup.logs.forEach {
             require(it.id.isNotBlank() && it.occurredAtEpochMs in 0..latestAllowed && it.recordedAtEpochMs in 0..latestAllowed)
-            require(it.note?.length ?: 0 <= 500 && it.source in setOf("APP", "WIDGET", "IMPORT"))
+            require(it.note?.length ?: 0 <= 500 && it.source in setOf("APP", "WIDGET", "MANUAL", "IMPORT"))
+        }
+        backup.beverageLogs.forEach {
+            require(it.id.isNotBlank() && it.occurredAtEpochMs in 0..latestAllowed && it.recordedAtEpochMs in 0..latestAllowed)
+            require(it.type in setOf("COFFEE", "ALCOHOL", "OTHER"))
+            require(it.source in setOf("APP", "IMPORT"))
         }
         backup.urgeSessions.forEach {
             require(it.id.isNotBlank() && it.startedAtEpochMs in 0..latestAllowed)

@@ -18,12 +18,14 @@ import com.pace.reduction.domain.model.AiSettings
 import com.pace.reduction.domain.model.CoachMessage
 import com.google.protobuf.ByteString
 import com.pace.reduction.data.db.CigaretteLogEntity
+import com.pace.reduction.data.db.BeverageLogEntity
 import com.pace.reduction.data.db.AchievementEntity
 import com.pace.reduction.data.db.DailyPlanSnapshotEntity
 import com.pace.reduction.data.db.ExternalBreakEntity
 import com.pace.reduction.data.db.PaceDatabase
 import com.pace.reduction.data.db.UrgeSessionEntity
 import com.pace.reduction.data.backup.AchievementBackup
+import com.pace.reduction.data.backup.BeverageLogBackup
 import com.pace.reduction.data.backup.ExternalBreakBackup
 import com.pace.reduction.data.backup.LogBackup
 import com.pace.reduction.data.backup.PaceBackup
@@ -35,6 +37,8 @@ import com.pace.reduction.data.backup.UrgeBackup
 import com.pace.reduction.domain.model.AccentPalette
 import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
+import com.pace.reduction.domain.model.BeverageLog
+import com.pace.reduction.domain.model.BeverageType
 import com.pace.reduction.domain.model.CigaretteLog
 import com.pace.reduction.domain.model.CoachingTone
 import com.pace.reduction.domain.model.DailyPlanSnapshot
@@ -114,6 +118,10 @@ class PaceRepository(
     }
 
     val allLogs: Flow<List<CigaretteLog>> = dao.observeAllLogs().map { entities ->
+        entities.map { it.toDomain() }
+    }
+
+    val activeBeverageLogs: Flow<List<BeverageLog>> = dao.observeActiveBeverageLogs().map { entities ->
         entities.map { it.toDomain() }
     }
 
@@ -293,6 +301,29 @@ class PaceRepository(
         if (updated) refreshWidgetSnapshot()
         return updated
     }
+
+    suspend fun logBeverage(type: BeverageType, source: String = "APP"): String {
+        val now = clock.instant()
+        val id = UUID.randomUUID().toString()
+        dao.insertBeverageLog(
+            BeverageLogEntity(
+                id = id,
+                type = type.name,
+                occurredAtEpochMs = now.toEpochMilli(),
+                recordedAtEpochMs = now.toEpochMilli(),
+                source = source,
+                reversedAtEpochMs = null,
+                reversalReason = null,
+            ),
+        )
+        return id
+    }
+
+    suspend fun undoBeverageLog(id: String): Boolean = dao.reverseBeverageLog(
+        id = id,
+        reversedAtEpochMs = clock.millis(),
+        reason = "USER_UNDO",
+    ) > 0
 
     suspend fun saveUrgeCheckIn(
         urgeBefore: Int?,
@@ -882,6 +913,12 @@ class PaceRepository(
             logs = dao.allLogs().map {
                 LogBackup(it.id, it.occurredAtEpochMs, it.recordedAtEpochMs, it.source, it.note, it.reversedAtEpochMs, it.reversalReason)
             },
+            beverageLogs = dao.allBeverageLogs().map {
+                BeverageLogBackup(
+                    it.id, it.type, it.occurredAtEpochMs, it.recordedAtEpochMs,
+                    it.source, it.reversedAtEpochMs, it.reversalReason,
+                )
+            },
             urgeSessions = dao.allUrgeSessions().map {
                 UrgeBackup(
                     it.id, it.startedAtEpochMs, it.endedAtEpochMs, it.tool, it.urgeBefore, it.urgeAfter,
@@ -909,6 +946,7 @@ class PaceRepository(
         validateBackup(backup)
         database.withTransaction {
             dao.deleteAllLogs()
+            dao.deleteAllBeverageLogs()
             dao.deleteAllUrgeSessions()
             dao.deleteAllDailySnapshots()
             dao.deleteAllAchievements()
@@ -918,6 +956,14 @@ class PaceRepository(
             dao.deleteAllStepDays()
             backup.logs.forEach {
                 dao.insertLog(CigaretteLogEntity(it.id, it.occurredAtEpochMs, it.recordedAtEpochMs, "IMPORT", it.note, it.reversedAtEpochMs, it.reversalReason))
+            }
+            backup.beverageLogs.forEach {
+                dao.insertBeverageLog(
+                    BeverageLogEntity(
+                        it.id, it.type, it.occurredAtEpochMs, it.recordedAtEpochMs,
+                        "IMPORT", it.reversedAtEpochMs, it.reversalReason,
+                    ),
+                )
             }
             backup.urgeSessions.forEach {
                 dao.upsertUrgeSession(
@@ -1609,6 +1655,15 @@ class PaceRepository(
 
     private fun CigaretteLogEntity.toDomain(): CigaretteLog = CigaretteLog(
         id = id,
+        occurredAt = Instant.ofEpochMilli(occurredAtEpochMs),
+        recordedAt = Instant.ofEpochMilli(recordedAtEpochMs),
+        source = source,
+        reversedAt = reversedAtEpochMs?.let(Instant::ofEpochMilli),
+    )
+
+    private fun BeverageLogEntity.toDomain(): BeverageLog = BeverageLog(
+        id = id,
+        type = BeverageType.valueOf(type),
         occurredAt = Instant.ofEpochMilli(occurredAtEpochMs),
         recordedAt = Instant.ofEpochMilli(recordedAtEpochMs),
         source = source,

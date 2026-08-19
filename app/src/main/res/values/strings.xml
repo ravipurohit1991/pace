@@ -36,6 +36,14 @@
     <string name="cigarette_logged">Logged.</string>
     <string name="undo">Undo</string>
     <string name="log_undone">Reversed.</string>
+    <string name="beverage_logged">Drink logged.</string>
+    <string name="beverage_log_undone">Drink removed.</string>
+    <string name="beverages_title">Drinks today</string>
+    <string name="beverages_body">A quick note of what may shape your pace.</string>
+    <string name="beverage_coffee">Coffee</string>
+    <string name="beverage_alcohol">Alcohol</string>
+    <string name="beverage_other">Other</string>
+    <string name="beverage_add_accessible">Log %1$s. %2$d logged today.</string>
     <string name="plan_saved">Plan saved.</string>
     <string name="check_in_saved">Check-in saved.</string>
     <string name="backup_exported">Export written.</string>
@@ -501,6 +509,7 @@
     <string name="week_gap_longer">%1$s longer</string>
     <string name="week_gap_shorter">%1$s shorter</string>
     <string name="calendar_title">Last %1$d weeks</string>
+    <string name="calendar_counts_hint">Daily cigarette count · 0 means a clear day</string>
     <string name="calendar_summary">%1$d of %2$d watched days stayed at or under the ceiling.</string>
     <string name="calendar_empty">Days fill in as you log them.</string>
     <string name="calendar_legend_clear">Clear</string>

@@ -17,6 +17,8 @@ import com.pace.reduction.domain.ProgressMetrics
 import com.pace.reduction.domain.AdaptiveSpacing
 import com.pace.reduction.domain.CalendarHistory
 import com.pace.reduction.domain.CalendarHistoryBuilder
+import com.pace.reduction.domain.BeverageCounts
+import com.pace.reduction.domain.BeverageTracker
 import com.pace.reduction.domain.QuitMetrics
 import com.pace.reduction.core.steps.StepSensor
 import com.pace.reduction.domain.QuitProgress
@@ -35,6 +37,8 @@ import com.pace.reduction.domain.model.ActivePause
 import com.pace.reduction.domain.model.Achievement
 import com.pace.reduction.domain.model.AiSettings
 import com.pace.reduction.domain.model.CigaretteLog
+import com.pace.reduction.domain.model.BeverageLog
+import com.pace.reduction.domain.model.BeverageType
 import com.pace.reduction.domain.model.CoachMessage
 import com.pace.reduction.domain.model.DailyCount
 import com.pace.reduction.domain.model.PlanSettings
@@ -72,6 +76,7 @@ data class PaceUiState(
     val settings: PlanSettings = PlanSettings(),
     val today: TodaySummary? = null,
     val activeLogs: List<CigaretteLog> = emptyList(),
+    val beveragesToday: BeverageCounts = BeverageCounts(),
     val dailyCounts: List<DailyCount> = emptyList(),
     val urgeSessionCount: Int = 0,
     val urgeSessions: List<UrgeSession> = emptyList(),
@@ -120,7 +125,9 @@ data class VoiceCallUiState(
 
 sealed interface PaceEvent {
     data class CigaretteLogged(val id: String) : PaceEvent
+    data class BeverageLogged(val id: String) : PaceEvent
     data object LogUndone : PaceEvent
+    data object BeverageLogUndone : PaceEvent
     data object PlanSaved : PaceEvent
     data object CheckInSaved : PaceEvent
     data class PauseCompleted(val sessionId: String) : PaceEvent
@@ -138,9 +145,15 @@ private data class CoreState(
     val settings: PlanSettings,
     val widget: WidgetSettings,
     val logs: List<CigaretteLog>,
+    val beverages: List<BeverageLog>,
     val sessions: List<UrgeSession>,
     val snapshots: List<com.pace.reduction.domain.model.DailyPlanSnapshot>,
     val now: Instant,
+)
+
+private data class HabitLogs(
+    val cigarettes: List<CigaretteLog>,
+    val beverages: List<BeverageLog>,
 )
 
 private data class AiState(
@@ -208,14 +221,19 @@ class PaceViewModel(
         repository.widgetSettings,
     ) { plan, widget -> plan to widget }
 
+    private val habitLogs = combine(
+        repository.activeLogs,
+        repository.activeBeverageLogs,
+    ) { cigarettes, beverages -> HabitLogs(cigarettes, beverages) }
+
     private val coreState = combine(
         preferences,
-        repository.activeLogs,
+        habitLogs,
         repository.urgeSessions,
         repository.dailySnapshots,
         ticker,
     ) { (settings, widget), logs, urgeSessions, snapshots, now ->
-        CoreState(settings, widget, logs, urgeSessions, snapshots, now)
+        CoreState(settings, widget, logs.cigarettes, logs.beverages, urgeSessions, snapshots, now)
     }
 
     private val aiState = combine(
@@ -295,6 +313,11 @@ class PaceViewModel(
             settings = core.settings,
             today = today,
             activeLogs = core.logs,
+            beveragesToday = BeverageTracker.countsFor(
+                date = core.now.atZone(zone).toLocalDate(),
+                zoneId = zone,
+                logs = core.beverages,
+            ),
             dailyCounts = progress.days.takeLast(7).map { DailyCount(it.date, it.count) },
             urgeSessionCount = core.sessions.size,
             urgeSessions = core.sessions,
@@ -389,6 +412,21 @@ class PaceViewModel(
         viewModelScope.launch {
             if (repository.undoLog(id)) {
                 _events.emit(PaceEvent.LogUndone)
+            }
+        }
+    }
+
+    fun logBeverage(type: BeverageType) {
+        viewModelScope.launch {
+            val id = repository.logBeverage(type)
+            _events.emit(PaceEvent.BeverageLogged(id))
+        }
+    }
+
+    fun undoBeverageLog(id: String) {
+        viewModelScope.launch {
+            if (repository.undoBeverageLog(id)) {
+                _events.emit(PaceEvent.BeverageLogUndone)
             }
         }
     }

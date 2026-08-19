@@ -8,6 +8,8 @@ data class PaceBackup(
     val exportedAtEpochMs: Long,
     val plan: PlanBackup,
     val logs: List<LogBackup>,
+    /** Defaulted so backups written before drink tracking existed still import. */
+    val beverageLogs: List<BeverageLogBackup> = emptyList(),
     val urgeSessions: List<UrgeBackup>,
     val dailySnapshots: List<SnapshotBackup>,
     val achievements: List<AchievementBackup>,
@@ -58,6 +60,17 @@ data class LogBackup(
     val recordedAtEpochMs: Long,
     val source: String,
     val note: String?,
+    val reversedAtEpochMs: Long?,
+    val reversalReason: String?,
+)
+
+@Serializable
+data class BeverageLogBackup(
+    val id: String,
+    val type: String,
+    val occurredAtEpochMs: Long,
+    val recordedAtEpochMs: Long,
+    val source: String,
     val reversedAtEpochMs: Long?,
     val reversalReason: String?,
 )

@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.R
@@ -403,6 +404,11 @@ private fun HistoryCalendarCard(
             stringResource(R.string.calendar_title, calendar.weeks.size),
             style = MaterialTheme.typography.titleLarge,
         )
+        Text(
+            stringResource(R.string.calendar_counts_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (calendar.isEmpty) {
             Text(
                 stringResource(R.string.calendar_empty),
@@ -417,8 +423,8 @@ private fun HistoryCalendarCard(
                 .getDisplayName(TextStyle.NARROW, locale)
         }
         Row(
-            modifier = Modifier.clearAndSetSemantics { },
-            horizontalArrangement = Arrangement.spacedBy(CellGap),
+            modifier = Modifier.fillMaxWidth().clearAndSetSemantics { },
+            horizontalArrangement = Arrangement.spacedBy(CellGap, Alignment.CenterHorizontally),
         ) {
             // The month label column, kept the same width as the labels below it so the grid lines
             // up with its own heading row.
@@ -444,7 +450,8 @@ private fun HistoryCalendarCard(
                 .toSet()
             val opening = week.days.filterNotNull().firstOrNull { it.date.month !in seenBefore }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(CellGap),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(CellGap, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -516,7 +523,18 @@ private fun CalendarCell(day: CalendarDay?, locale: Locale, modifier: Modifier =
                     Modifier.semantics { contentDescription = description }
                 },
             ),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        if (day != null && !day.future && day.standing != DayStanding.UNKNOWN) {
+            Text(
+                text = day.count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = standingContentColour(day.standing),
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 @Composable
@@ -551,9 +569,21 @@ private fun standingColour(standing: DayStanding?, future: Boolean): Color {
         else -> when (standing) {
             DayStanding.UNKNOWN -> scheme.surfaceVariant.copy(alpha = 0.45f)
             DayStanding.CLEAR -> scheme.primary
-            DayStanding.UNDER -> scheme.primary.copy(alpha = 0.55f)
-            DayStanding.AT -> scheme.tertiary.copy(alpha = 0.65f)
-            DayStanding.OVER -> scheme.error.copy(alpha = 0.65f)
+            DayStanding.UNDER -> scheme.primaryContainer
+            DayStanding.AT -> scheme.tertiaryContainer
+            DayStanding.OVER -> scheme.errorContainer
         }
+    }
+}
+
+@Composable
+private fun standingContentColour(standing: DayStanding): Color {
+    val scheme = MaterialTheme.colorScheme
+    return when (standing) {
+        DayStanding.UNKNOWN -> scheme.onSurfaceVariant
+        DayStanding.CLEAR -> scheme.onPrimary
+        DayStanding.UNDER -> scheme.onPrimaryContainer
+        DayStanding.AT -> scheme.onTertiaryContainer
+        DayStanding.OVER -> scheme.onErrorContainer
     }
 }
