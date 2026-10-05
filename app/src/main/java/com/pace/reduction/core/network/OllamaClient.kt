@@ -163,6 +163,48 @@ class OllamaClient {
         }
 
     /**
+     * One-shot completion constrained to a JSON schema through Ollama's structured outputs. Used by
+     * the arcade, the "pick for me" agent and the playbook drafter, which all need data the app
+     * can act on rather than prose. Returns the raw JSON text; callers validate it themselves.
+     */
+    suspend fun chatJson(
+        apiKey: String,
+        model: String,
+        messages: List<OllamaMessage>,
+        schema: JsonObject,
+        temperature: Double = 0.9,
+    ): String = withContext(Dispatchers.IO) {
+        val request = buildRequest(
+            apiKey = apiKey,
+            path = "api/chat",
+            body = json.encodeToString(
+                ChatRequest.serializer(),
+                ChatRequest(
+                    model = model,
+                    messages = messages,
+                    stream = false,
+                    options = ChatOptions(temperature = temperature),
+                    format = schema,
+                ),
+            ),
+        )
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error(describeFailure(response))
+            val body = response.body.string().take(MAX_RESPONSE_CHARS)
+            val chunk = json.decodeFromString(ChatChunk.serializer(), body)
+            chunk.error?.let { error(it.take(MAX_ERROR_CHARS)) }
+            val content = chunk.message?.content.orEmpty().trim()
+            if (content.isEmpty()) {
+                error(
+                    if (chunk.doneReason == "length") "The model ran out of room before answering"
+                    else "The model returned an empty response",
+                )
+            }
+            content.take(MAX_JSON_CHARS)
+        }
+    }
+
+    /**
      * Verifies the key and returns only models that can both complete text and inspect images.
      * `/api/tags` does not expose capabilities, so each live tag is checked with `/api/show`.
      */
@@ -281,6 +323,7 @@ class OllamaClient {
         private const val MAX_REPLY_CHARS = 4_000
         private const val MAX_ERROR_CHARS = 600
         private const val MAX_IMAGE_CONTEXT_CHARS = 900
+        private const val MAX_JSON_CHARS = 16_000
         private val REQUIRED_CAPABILITIES = setOf("completion", "vision")
         private val VISION_TURN_SCHEMA = buildJsonObject {
             put("type", "object")

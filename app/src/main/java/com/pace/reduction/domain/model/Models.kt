@@ -120,6 +120,8 @@ data class PlanSettings(
     val workStartMinutes: Int = 9 * 60,
     val workEndMinutes: Int = 17 * 60,
     val moveInvitesPerDay: Int = 2,
+    /** Decisions made in advance: "if this happens, then I do that". */
+    val ifThenPlans: List<com.pace.reduction.domain.IfThenPlan> = emptyList(),
 ) {
     companion object {
         const val MAX_VALUES = 5

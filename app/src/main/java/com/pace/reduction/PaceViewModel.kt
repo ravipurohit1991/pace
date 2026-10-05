@@ -185,6 +185,9 @@ class PaceViewModel(
 
     private val stepSensor = StepSensor(application)
 
+    /** Arcade rounds, the "pick for me" agent and the playbook drafter. */
+    val extras = CoachExtras(viewModelScope, repository, coachService)
+
     private val _coachState = MutableStateFlow(CoachUiState())
     val coachState: StateFlow<CoachUiState> = _coachState.asStateFlow()
     private var coachJob: Job? = null
@@ -501,9 +504,21 @@ class PaceViewModel(
         externalRef: String? = null,
     ) {
         viewModelScope.launch {
-            repository.saveCompletedTool(tool, urgeBefore, urgeAfter, triggers, note, smokedAfter, externalRef)
+            _lastToolSessionId.value =
+                repository.saveCompletedTool(tool, urgeBefore, urgeAfter, triggers, note, smokedAfter, externalRef)
             _events.emit(PaceEvent.CheckInSaved)
         }
+    }
+
+    /** The last finished toolkit session, so a "how is it now?" rating can complete it later. */
+    private val _lastToolSessionId = MutableStateFlow<String?>(null)
+
+    /** Completes the last tool session with an after-rating, then retires the pick that led to it. */
+    fun rateLastTool(urgeAfter: Int) {
+        val sessionId = _lastToolSessionId.value
+        extras.clearAutopilot()
+        if (sessionId == null) return
+        viewModelScope.launch { repository.finishUrgeOutcome(sessionId, urgeAfter, null) }
     }
 
     /**

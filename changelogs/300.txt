@@ -1,0 +1,9 @@
+Pace 0.3.0 gives the AI coach hands: it can now play with you, choose for you, and plan ahead with you.
+
+- New AI arcade in the Toolkit: Story quest (a five-scene story you steer with a tap), Trivia sprint (five fresh questions on a topic you pick) and Emoji decoder (guess the film, saying or thing). Trivia and emoji puzzles also work offline from a built-in bank
+- The coach can now hand you something to do: a reply may carry a button that opens the exact breathing exercise, game or movement session it suggested
+- New "Pick for me" card: say how strong it is (optional) and the coach chooses one tool that fits the hour and what has worked for you before. Works offline too, and an optional after-rating teaches future picks
+- New "Your go-tos" card: reopen what you used last and see which tools actually ease things for you, computed on your device
+- New Playbook: if-then plans decided in advance ("If it is 3pm at my desk, then I walk to the window"). The coach drafts them from your own patterns, you keep the ones that fit, they sit on Today, and the coach reminds you of them when a cue lands. Included in backups
+- More chat starters, including "Play a game with me" and "Tell me something weird"
+- Generated game content is filtered so it never names what you are cutting down on

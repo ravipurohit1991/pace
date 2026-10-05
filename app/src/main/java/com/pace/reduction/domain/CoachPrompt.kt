@@ -47,6 +47,8 @@ data class CoachContext(
     val weeklyTrend: String? = null,
     /** For a MOVE_INVITE: the session the app is about to offer, so the line matches the button. */
     val suggestedMove: String? = null,
+    /** Their own if-then plans, in their words: "cue → action". */
+    val ifThenPlans: List<String> = emptyList(),
 )
 
 enum class CoachTask {
@@ -60,6 +62,11 @@ enum class CoachTask {
     MORNING_PLAN,
     MOVE_INVITE,
     EVENING_REFLECT,
+    STORY,
+    TRIVIA,
+    EMOJI,
+    AUTOPILOT,
+    PLAYBOOK,
 }
 
 object CoachPrompt {
@@ -152,11 +159,21 @@ object CoachPrompt {
         history: List<OllamaMessage>,
         persona: String = DEFAULT_PERSONA,
         extraSystemInstruction: String = "",
+        /** Lets a text chat reply carry one [[do:ID]] tag that becomes a button. Never for voice. */
+        allowActions: Boolean = false,
+        /** Replaces the canned opening line for tasks whose request carries its own detail. */
+        kickoffOverride: String? = null,
+        /** Whether tools that need the coach may be offered as actions. */
+        coachReady: Boolean = true,
     ): List<OllamaMessage> = buildList {
         val system = buildString {
             append(persona.ifBlank { DEFAULT_PERSONA })
             append("\n\n")
             append(instruction(task))
+            if (allowActions && task == CoachTask.CHAT) {
+                append("\n\n")
+                append(CoachActions.instruction(coachReady))
+            }
             if (extraSystemInstruction.isNotBlank()) {
                 append("\n\nPhoto instruction:\n")
                 append(extraSystemInstruction.trim())
@@ -171,7 +188,7 @@ object CoachPrompt {
         }
         add(OllamaMessage("system", system))
         addAll(history.takeLast(MAX_HISTORY))
-        if (task != CoachTask.CHAT) add(OllamaMessage("user", kickoff(task)))
+        if (task != CoachTask.CHAT) add(OllamaMessage("user", kickoffOverride ?: kickoff(task)))
     }
 
     private fun instruction(task: CoachTask): String = when (task) {
@@ -218,6 +235,38 @@ object CoachPrompt {
                 "specific thing about how today went — the numbers are below — and let them put it " +
                 "down. If today was hard, say so plainly and do not spin it. Under 40 words. Never " +
                 "assign homework."
+        CoachTask.STORY ->
+            "You are running a tiny interactive story they steer, purely to absorb the next few " +
+                "minutes. Write vivid, playful, second-person scenes of 50 to 80 words with a little " +
+                "humour and one surprising detail. Offer exactly three short, clearly different " +
+                "choices of under 10 words each. Keep it light: no gore, no horror, nothing heavy. " +
+                "Respond only with JSON: scene, choices, ending. When told it is the final beat, " +
+                "write a satisfying ending with an empty choices list and ending set to true."
+        CoachTask.TRIVIA ->
+            "You are hosting a quick trivia sprint. Write exactly five multiple-choice questions on " +
+                "the topic requested, each with four short options and exactly one correct answer. " +
+                "Mix easy and medium, make them fun rather than academic, and only use facts you are " +
+                "certain of. answer_index is the zero-based position of the correct option; vary it. " +
+                "Add a one-line surprising fact for each. Respond only with JSON."
+        CoachTask.EMOJI ->
+            "You are setting emoji puzzles. Write exactly five: each one is two to five emoji that " +
+                "together spell out a well-known film, song, saying, food, place or everyday thing. " +
+                "Pick things almost anyone would know, vary the categories, never use letters or " +
+                "words inside the emoji clue, and give a short hint that does not contain the answer. " +
+                "Respond only with JSON."
+        CoachTask.AUTOPILOT ->
+            "They have asked you to choose what they should do right now, so they do not have to " +
+                "decide. Pick exactly one tool from the list below that fits the hour, the strength " +
+                "they reported and what their history says works for them; avoid repeating what they " +
+                "just did. Then write one warm, specific sentence of under 25 words that makes " +
+                "starting it sound easy. Respond only with JSON: tool (an exact ID) and message.\n" +
+                "Tools you may choose from:\n" + ToolDirectory.menu()
+        CoachTask.PLAYBOOK ->
+            "Help them decide in advance. Write three if-then plans tailored to their own day: the " +
+                "\"if\" is a concrete cue they will recognise (a time, place, feeling or situation from " +
+                "the context), the \"then\" is one small, specific action that takes under five " +
+                "minutes and needs no willpower speech. Under 12 words each part. Do not repeat " +
+                "plans they already have. Respond only with JSON."
     }
 
     private fun kickoff(task: CoachTask): String = when (task) {
@@ -230,6 +279,11 @@ object CoachPrompt {
         CoachTask.MORNING_PLAN -> "Morning. What does today look like?"
         CoachTask.MOVE_INVITE -> "Talk me into getting up."
         CoachTask.EVENING_REFLECT -> "How did today go?"
+        CoachTask.STORY -> "Start a new story."
+        CoachTask.TRIVIA -> "Five questions, surprise me on the topic."
+        CoachTask.EMOJI -> "Give me five emoji puzzles."
+        CoachTask.AUTOPILOT -> "Pick something for me to do right now."
+        CoachTask.PLAYBOOK -> "Draft me three if-then plans."
         CoachTask.CHAT -> ""
     }
 
@@ -285,6 +339,13 @@ object CoachPrompt {
         }
         if (context.personalReason.isNotBlank()) {
             appendLine("- The longer version of why: \"${context.personalReason.take(300)}\"")
+        }
+        if (context.ifThenPlans.isNotEmpty()) {
+            appendLine(
+                "- Plans they made in advance, in their words: " +
+                    context.ifThenPlans.joinToString("; ") { "\"${it.take(180)}\"" } +
+                    ". When one of these cues is happening, remind them of their own plan.",
+            )
         }
         context.suggestedMove?.let {
             appendLine("- The movement session the app is about to offer them: $it. Name this one, not another.")

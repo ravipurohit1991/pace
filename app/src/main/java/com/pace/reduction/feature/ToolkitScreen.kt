@@ -69,6 +69,8 @@ import com.pace.reduction.core.designsystem.LocalMotion
 import com.pace.reduction.core.designsystem.breathe
 import com.pace.reduction.core.network.SafeLinks
 import com.pace.reduction.domain.MoveCatalogue
+import com.pace.reduction.domain.ToolDirectory
+import com.pace.reduction.domain.ToolInsights
 import java.time.Duration
 import kotlinx.coroutines.delay
 
@@ -78,8 +80,13 @@ internal fun EnhancedToolkitScreen(
     viewModel: PaceViewModel,
     onOpenSettings: () -> Unit,
     requestedMoveSession: String? = null,
+    /** A tool another screen asked for by id — a coach action, for instance. Consumed once. */
+    requestedTool: String? = null,
+    onRequestedToolConsumed: () -> Unit = {},
 ) {
     val coach by viewModel.coachState.collectAsStateWithLifecycle()
+    val arcade by viewModel.extras.arcade.collectAsStateWithLifecycle()
+    val autopilot by viewModel.extras.autopilot.collectAsStateWithLifecycle()
     // An invitation to move opens the session it named, rather than dropping the user on a shelf to
     // find it again — the ask was already made and answered once.
     var activeMove by rememberSaveable { mutableStateOf(requestedMoveSession) }
@@ -87,6 +94,43 @@ internal fun EnhancedToolkitScreen(
     var completedTool by rememberSaveable { mutableStateOf<String?>(null) }
     var externalPending by rememberSaveable { mutableStateOf<String?>(null) }
     var externalWasBackgrounded by rememberSaveable { mutableStateOf(false) }
+    val coachReady = uiState.ai.isReady
+    // Recomputed when the sessions change, not on every tick of the clock.
+    val recentTools = remember(uiState.urgeSessions) { ToolInsights.recent(uiState.urgeSessions) }
+    val toolStats = remember(uiState.urgeSessions) {
+        ToolInsights.calculate(uiState.urgeSessions, java.time.Instant.now())
+    }
+    // Anything in the directory opens the same way, whoever asked: a movement id becomes a session,
+    // everything else a tool.
+    val openById: (String) -> Unit = { id ->
+        if (id.startsWith(ToolDirectory.MOVE_PREFIX)) {
+            activeTool = null
+            activeMove = id.removePrefix(ToolDirectory.MOVE_PREFIX)
+        } else {
+            activeMove = null
+            activeTool = id
+        }
+    }
+    LaunchedEffect(requestedTool) {
+        val id = requestedTool ?: return@LaunchedEffect
+        if (ToolDirectory.byId(id) != null) openById(id)
+        onRequestedToolConsumed()
+    }
+    // A tool the agent picked is filed with the strength reported before the pick, so the optional
+    // after-rating can complete it into evidence.
+    val recordTool: (String, String?) -> Unit = { tool, externalRef ->
+        val picked = autopilot.pick?.toolId == tool
+        viewModel.saveCompletedTool(
+            tool = tool,
+            urgeBefore = if (picked) autopilot.strength else null,
+            urgeAfter = null,
+            triggers = emptySet(),
+            note = "",
+            smokedAfter = null,
+            externalRef = externalRef,
+        )
+        if (picked) viewModel.extras.autopilotToolFinished()
+    }
     val context = LocalContext.current
     val trustedPersonMessage = stringResource(R.string.trusted_person_message)
     val shareChooserTitle = stringResource(R.string.share_with_someone)
@@ -128,15 +172,7 @@ internal fun EnhancedToolkitScreen(
     // friction at the worst moment, so completion just records itself.
     LaunchedEffect(completedTool) {
         val encoded = completedTool ?: return@LaunchedEffect
-        viewModel.saveCompletedTool(
-            tool = encoded.substringBefore(':'),
-            urgeBefore = null,
-            urgeAfter = null,
-            triggers = emptySet(),
-            note = "",
-            smokedAfter = null,
-            externalRef = encoded.substringAfter(':', "").ifBlank { null },
-        )
+        recordTool(encoded.substringBefore(':'), encoded.substringAfter(':', "").ifBlank { null })
         completedTool = null
         activeTool = null
     }
@@ -144,7 +180,17 @@ internal fun EnhancedToolkitScreen(
     // An open tool or session takes over the whole screen, so back closes it — the same thing its
     // own close button does — rather than skipping past it to the previous screen.
     BackHandler(enabled = activeMove != null || activeTool != null) {
-        if (activeMove != null) activeMove = null else activeTool = null
+        if (activeMove != null) {
+            activeMove = null
+        } else {
+            // A closed game deals a fresh round next time rather than resuming a stale one.
+            when (activeTool) {
+                ToolDirectory.TRIVIA -> viewModel.extras.clearTrivia()
+                ToolDirectory.EMOJI -> viewModel.extras.clearEmoji()
+                ToolDirectory.STORY -> viewModel.extras.resetStory()
+            }
+            activeTool = null
+        }
     }
 
     val move = activeMove?.let(MoveCatalogue::byId)
@@ -163,6 +209,17 @@ internal fun EnhancedToolkitScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (activeTool == null && move == null) item { LeadParagraph(stringResource(R.string.toolkit_intro)) }
+        // The agent's card sits first: it is the answer for the minute when choosing is the problem.
+        if (activeTool == null && move == null) item {
+            PickForMeCard(
+                state = autopilot,
+                coachReady = coachReady,
+                onPick = { strength -> viewModel.extras.pickForMe(strength, uiState.urgeSessions, coachReady) },
+                onStart = openById,
+                onRateAfter = viewModel::rateLastTool,
+                onDismiss = viewModel.extras::clearAutopilot,
+            )
+        }
         if (move != null) {
             item {
                 MoveSessionTool(
@@ -202,6 +259,46 @@ internal fun EnhancedToolkitScreen(
         }
         val hapticsEnabled = uiState.settings.hapticsEnabled
         when (activeTool) {
+            ToolDirectory.TRIVIA -> item {
+                TriviaTool(
+                    state = arcade,
+                    coachReady = coachReady,
+                    hapticsEnabled = hapticsEnabled,
+                    onNewRound = { topic -> viewModel.extras.newTrivia(topic, coachReady) },
+                    onRoundComplete = { recordTool(ToolDirectory.TRIVIA, null) },
+                    onClose = {
+                        viewModel.extras.clearTrivia()
+                        activeTool = null
+                    },
+                )
+            }
+            ToolDirectory.EMOJI -> item {
+                EmojiTool(
+                    state = arcade,
+                    coachReady = coachReady,
+                    hapticsEnabled = hapticsEnabled,
+                    onNewRound = { viewModel.extras.newEmojiRound(coachReady) },
+                    onRoundComplete = { recordTool(ToolDirectory.EMOJI, null) },
+                    onClose = {
+                        viewModel.extras.clearEmoji()
+                        activeTool = null
+                    },
+                )
+            }
+            ToolDirectory.STORY -> item {
+                StoryTool(
+                    state = arcade,
+                    coachReady = coachReady,
+                    onStart = viewModel.extras::startStory,
+                    onChoose = viewModel.extras::chooseInStory,
+                    onReset = viewModel.extras::resetStory,
+                    onRoundComplete = { recordTool(ToolDirectory.STORY, null) },
+                    onClose = {
+                        viewModel.extras.resetStory()
+                        activeTool = null
+                    },
+                )
+            }
             ToolCatalogue.BREATHING -> item {
                 BreathingTool(
                     hapticsEnabled = hapticsEnabled,
@@ -239,6 +336,17 @@ internal fun EnhancedToolkitScreen(
         // to look at when the whole point was to look at one thing.
         if (activeTool != null) return@PaceScreen
 
+        if (recentTools.isNotEmpty() || toolStats.isNotEmpty()) item {
+            GoToCard(recent = recentTools, stats = toolStats, onOpen = openById)
+        }
+        item {
+            ToolShelf(
+                title = stringResource(R.string.arcade_title),
+                body = stringResource(if (coachReady) R.string.arcade_body else R.string.arcade_body_offline),
+                entries = arcadeEntries,
+                onOpen = { activeTool = it },
+            )
+        }
         item {
             ToolShelf(
                 title = stringResource(R.string.tools_guided_title),

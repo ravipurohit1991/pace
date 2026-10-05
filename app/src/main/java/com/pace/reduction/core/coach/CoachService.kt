@@ -4,10 +4,21 @@ import com.pace.reduction.core.network.OllamaClient
 import com.pace.reduction.core.network.OllamaMessage
 import com.pace.reduction.core.network.OllamaVisionTurn
 import com.pace.reduction.data.repository.PaceRepository
+import com.pace.reduction.domain.ArcadeOffline
+import com.pace.reduction.domain.ArcadeParser
+import com.pace.reduction.domain.Autopilot
+import com.pace.reduction.domain.AutopilotPick
+import com.pace.reduction.domain.CoachActions
 import com.pace.reduction.domain.CoachBeat
 import com.pace.reduction.domain.CoachPrompt
 import com.pace.reduction.domain.CoachTask
 import com.pace.reduction.domain.CoachImageMemory
+import com.pace.reduction.domain.EmojiPuzzle
+import com.pace.reduction.domain.IfThenPlan
+import com.pace.reduction.domain.Playbook
+import com.pace.reduction.domain.StoryBeat
+import com.pace.reduction.domain.ToolStat
+import com.pace.reduction.domain.TriviaQuestion
 import com.pace.reduction.domain.model.AiSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -45,6 +56,7 @@ class CoachService(
             context = groundingFor(settings),
             history = history,
             persona = settings.systemPrompt,
+            allowActions = true,
         )
         return client.chatStream(settings.apiKey, settings.model, messages)
     }
@@ -94,7 +106,7 @@ class CoachService(
     suspend fun voiceReply(history: List<OllamaMessage>): String {
         val settings = repository.aiSettings.first()
         if (!settings.isReady || history.isEmpty()) return ""
-        return client.chat(
+        val reply = client.chat(
             apiKey = settings.apiKey,
             model = settings.model,
             messages = CoachPrompt.messages(
@@ -104,6 +116,8 @@ class CoachService(
                 persona = settings.systemPrompt,
             ),
         )
+        // Spoken aloud, so a stray tag copied from the text chat must never be read out.
+        return CoachActions.strip(reply)
     }
 
     suspend fun riddle(): String = oneShot(CoachTask.RIDDLE)
@@ -144,6 +158,134 @@ class CoachService(
                 history = emptyList(),
                 persona = settings.systemPrompt,
             ),
+        )
+    }
+
+    /**
+     * Five fresh trivia questions on [topic]. Not grounded in their figures: a quiz about your own
+     * numbers is the opposite of a distraction.
+     */
+    suspend fun triviaRound(topic: String): List<TriviaQuestion> {
+        val raw = arcadeJson(
+            task = CoachTask.TRIVIA,
+            kickoff = if (topic.isBlank() || topic == ArcadeOffline.triviaTopics.first()) {
+                "Five questions, surprise me with a mix of topics."
+            } else {
+                "Five questions about ${topic.take(40)}."
+            },
+            schema = ArcadeParser.Schemas.trivia,
+        )
+        return ArcadeParser.trivia(raw).also { if (it.size < 3) error("The quiz came back garbled, try again") }
+    }
+
+    suspend fun emojiRound(): List<EmojiPuzzle> {
+        val raw = arcadeJson(CoachTask.EMOJI, "Give me five emoji puzzles.", ArcadeParser.Schemas.emoji)
+        return ArcadeParser.emoji(raw).also { if (it.size < 3) error("The puzzles came back garbled, try again") }
+    }
+
+    /**
+     * The next beat of a story. [path] is every scene so far paired with the choice made after it,
+     * replayed as a conversation so the model keeps its own plot straight.
+     */
+    suspend fun storyBeat(genre: String, path: List<Pair<String, String>>): StoryBeat {
+        val history = path.flatMap { (scene, choice) ->
+            listOf(OllamaMessage("assistant", scene), OllamaMessage("user", "I choose: $choice"))
+        }
+        val beatNumber = path.size + 1
+        val kickoff = when {
+            path.isEmpty() -> "Start a new ${genre.take(40).lowercase()} story. This is beat 1 of ${ArcadeOffline.STORY_BEATS}."
+            beatNumber >= ArcadeOffline.STORY_BEATS ->
+                "Continue from my choice. This is the final beat: land the ending now, no choices."
+            else -> "Continue from my choice. This is beat $beatNumber of ${ArcadeOffline.STORY_BEATS}."
+        }
+        val raw = arcadeJson(CoachTask.STORY, kickoff, ArcadeParser.Schemas.story, history)
+        return ArcadeParser.story(raw) ?: error("The story lost its thread, try again")
+    }
+
+    /**
+     * Lets the model choose the tool. It sees their grounded figures (when shared), the strength
+     * they reported, what they used last and what has measurably helped, and must answer with an
+     * id the app can open — anything else is rejected and the caller falls back to the device.
+     */
+    suspend fun autopilot(strength: Int?, recent: List<String>, stats: List<ToolStat>): AutopilotPick? {
+        val settings = repository.aiSettings.first()
+        if (!settings.isReady) return null
+        val kickoff = buildString {
+            append("Pick something for me to do right now.")
+            strength?.let { append(" Right now it is a $it out of 5 for me.") }
+            if (recent.isNotEmpty()) append(" I last used: ${recent.joinToString(", ")}.")
+            val evidence = stats.filter { it.rated > 0 }.take(4)
+            if (evidence.isNotEmpty()) {
+                append(" What has helped before (average fall on a 1 to 5 scale): ")
+                append(evidence.joinToString(", ") { "${it.toolId} ${"%.1f".format(it.averageDrop ?: 0.0)}" })
+                append(".")
+            }
+        }
+        val raw = client.chatJson(
+            apiKey = settings.apiKey,
+            model = settings.model,
+            messages = CoachPrompt.messages(
+                task = CoachTask.AUTOPILOT,
+                context = groundingFor(settings),
+                history = emptyList(),
+                persona = settings.systemPrompt,
+                extraSystemInstruction = "",
+                kickoffOverride = kickoff,
+            ),
+            schema = Autopilot.schema,
+            temperature = 0.7,
+        )
+        return Autopilot.parse(raw)
+    }
+
+    /** Three if-then plans drafted from their own patterns, minus the ones they already keep. */
+    suspend fun draftPlaybook(existing: List<IfThenPlan>): List<IfThenPlan> {
+        val settings = repository.aiSettings.first()
+        if (!settings.isReady) return emptyList()
+        val kickoff = buildString {
+            append("Draft me three if-then plans.")
+            if (existing.isNotEmpty()) {
+                append(" I already have: ")
+                append(existing.joinToString("; ") { "if ${it.cue}, then ${it.action}" })
+                append(".")
+            }
+        }
+        val raw = client.chatJson(
+            apiKey = settings.apiKey,
+            model = settings.model,
+            messages = CoachPrompt.messages(
+                task = CoachTask.PLAYBOOK,
+                // The plans are only as good as the cues, and the cues live in their figures.
+                context = groundingFor(settings),
+                history = emptyList(),
+                persona = settings.systemPrompt,
+                kickoffOverride = kickoff,
+            ),
+            schema = Playbook.schema,
+            temperature = 0.8,
+        )
+        return Playbook.parseSuggestions(raw).also { if (it.isEmpty()) error("No usable plans came back, try again") }
+    }
+
+    private suspend fun arcadeJson(
+        task: CoachTask,
+        kickoff: String,
+        schema: kotlinx.serialization.json.JsonObject,
+        history: List<OllamaMessage> = emptyList(),
+    ): String {
+        val settings = repository.aiSettings.first()
+        if (!settings.isReady) error("Set up the AI coach in Settings to play this")
+        return client.chatJson(
+            apiKey = settings.apiKey,
+            model = settings.model,
+            messages = CoachPrompt.messages(
+                task = task,
+                context = null,
+                history = history,
+                persona = settings.systemPrompt,
+                kickoffOverride = kickoff,
+            ),
+            schema = schema,
         )
     }
 

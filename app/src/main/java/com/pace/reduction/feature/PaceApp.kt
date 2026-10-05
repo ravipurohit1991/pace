@@ -152,6 +152,9 @@ private data object SettingsDestination : NavKey
 @Serializable
 private data object HistoryDestination : NavKey
 
+@Serializable
+private data object PlaybookDestination : NavKey
+
 private data class NavigationItem(
     val key: NavKey,
     val label: Int,
@@ -306,6 +309,9 @@ private fun MainShell(
     }
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     var checkInOpen by rememberSaveable { mutableStateOf(false) }
+    // A tool asked for from another tab — the coach handing over an action — waiting for the
+    // toolkit to open it. Held here because the toolkit's own state does not exist until it shows.
+    var pendingTool by rememberSaveable { mutableStateOf<String?>(null) }
     val navigationItems = listOf(
         NavigationItem(TodayDestination, R.string.nav_today, Icons.Outlined.Home),
         NavigationItem(CoachDestination, R.string.nav_coach, Icons.Outlined.Forum),
@@ -403,6 +409,14 @@ private fun MainShell(
                             viewModel.selectEditorDate(uiState.now.atZone(java.time.ZoneId.systemDefault()).toLocalDate())
                             backStack.add(HistoryDestination)
                         },
+                        onOpenPlaybook = { backStack.add(PlaybookDestination) },
+                    )
+                }
+                entry<PlaybookDestination> {
+                    PlaybookScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onBack = { backStack.removeLastOrNull() },
                     )
                 }
                 entry<CoachDestination>(metadata = tabTransition) {
@@ -411,6 +425,10 @@ private fun MainShell(
                         viewModel = viewModel,
                         onOpenSettings = { backStack.add(SettingsDestination) },
                         onStartCall = { backStack.add(VoiceCallDestination) },
+                        onOpenTool = { id ->
+                            pendingTool = id
+                            switchTab(ToolkitDestination)
+                        },
                     )
                 }
                 entry<VoiceCallDestination> {
@@ -428,6 +446,8 @@ private fun MainShell(
                         viewModel = viewModel,
                         onOpenSettings = { backStack.add(SettingsDestination) },
                         requestedMoveSession = requestedMove,
+                        requestedTool = pendingTool,
+                        onRequestedToolConsumed = { pendingTool = null },
                     )
                 }
                 entry<ProgressDestination>(metadata = tabTransition) {
@@ -487,6 +507,7 @@ private fun TodayScreen(
     onOpenSettings: () -> Unit,
     onCheckIn: () -> Unit,
     onOpenJournal: () -> Unit,
+    onOpenPlaybook: () -> Unit,
 ) {
     val today = requireNotNull(uiState.today)
     val quit = uiState.quit
@@ -611,6 +632,14 @@ private fun TodayScreen(
                     Text(uiState.settings.personalReason, style = MaterialTheme.typography.bodyMedium)
                 }
             }
+        }
+        // Plans made in advance belong where the moment finds them, right under the reasons.
+        if (!resting) item {
+            PlaybookCard(
+                plans = uiState.settings.ifThenPlans,
+                onOpen = onOpenPlaybook,
+                modifier = Modifier.entrance(6),
+            )
         }
         if (widgetInstalled == false) {
             item {

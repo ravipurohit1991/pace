@@ -59,6 +59,8 @@ import com.pace.reduction.domain.CoachAgenda
 import com.pace.reduction.domain.CoachBeat
 import com.pace.reduction.domain.CoachContext
 import com.pace.reduction.domain.DailyProgress
+import com.pace.reduction.domain.IfThenPlan
+import com.pace.reduction.domain.Playbook
 import com.pace.reduction.domain.MoveCatalogue
 import com.pace.reduction.domain.MoveSession
 import com.pace.reduction.domain.UrgePattern
@@ -600,6 +602,16 @@ class PaceRepository(
         }
     }
 
+    /** Replaces the if-then plans without touching the rest of the plan. */
+    suspend fun savePlaybook(plans: List<IfThenPlan>) {
+        preferencesStore.updateData { current ->
+            current.toBuilder()
+                .clearIfThenPlans()
+                .addAllIfThenPlans(Playbook.sanitise(plans).map(Playbook::encode))
+                .build()
+        }
+    }
+
     suspend fun appendCoachMessage(role: String, content: String): String {
         val id = UUID.randomUUID().toString()
         dao.upsertCoachMessage(
@@ -765,6 +777,7 @@ class PaceRepository(
                 ?.let { java.time.Duration.between(it.startedAt, now).toMinutes() },
             weeklyTrend = weeklyTrend(logs, zone, zoned.toLocalDate()),
             suggestedMove = suggestedMove,
+            ifThenPlans = plan.ifThenPlans.map { "if ${it.cue}, then ${it.action}" },
         )
     }
 
@@ -941,6 +954,7 @@ class PaceRepository(
                 hapticsEnabled = plan.hapticsEnabled,
                 themeMode = plan.themeMode.name,
                 personalValues = plan.personalValues,
+                ifThenPlans = plan.ifThenPlans.map(Playbook::encode),
                 drinkQuickLogEnabled = plan.drinkQuickLogEnabled,
                 coffeeTrackingEnabled = plan.coffeeTrackingEnabled,
                 alcoholTrackingEnabled = plan.alcoholTrackingEnabled,
@@ -1108,6 +1122,8 @@ class PaceRepository(
         require(plan.currencyCode.length == 3 && plan.personalReason.length <= 500 && plan.rewardName.length <= 100)
         require(plan.personalValues.size <= PlanSettings.MAX_VALUES)
         require(plan.personalValues.all { it.length <= PlanSettings.MAX_VALUE_CHARS })
+        require(plan.ifThenPlans.size <= Playbook.MAX_PLANS)
+        require(plan.ifThenPlans.all { it.length <= Playbook.MAX_PART_CHARS * 2 + 1 })
         require(runCatching { CoachingTone.valueOf(plan.coachingTone) }.isSuccess)
         require(runCatching { ReminderIntensity.valueOf(plan.reminderIntensity) }.isSuccess)
         require(runCatching { ThemeMode.valueOf(plan.themeMode) }.isSuccess)
@@ -1156,6 +1172,7 @@ class PaceRepository(
         hapticsEnabled = hapticsEnabled,
         themeMode = ThemeMode.valueOf(themeMode),
         personalValues = personalValues,
+        ifThenPlans = ifThenPlans.mapNotNull(Playbook::decode),
         drinkQuickLogEnabled = drinkQuickLogEnabled,
         coffeeTrackingEnabled = coffeeTrackingEnabled,
         alcoholTrackingEnabled = alcoholTrackingEnabled,
@@ -1526,6 +1543,8 @@ class PaceRepository(
         .setHighUrgeEndMinutes(plan.highUrgeEndMinutes.coerceIn(0, 1439))
         .clearPersonalValues()
         .addAllPersonalValues(plan.personalValues.toStoredValues())
+        .clearIfThenPlans()
+        .addAllIfThenPlans(Playbook.sanitise(plan.ifThenPlans).map(Playbook::encode))
         .setAutoCoachDisabled(!plan.autoCoachEnabled)
         .setWorkStartMinutes(plan.workStartMinutes.coerceIn(0, 1439))
         .setWorkEndMinutes(plan.workEndMinutes.coerceIn(0, 1439))
@@ -1633,6 +1652,7 @@ class PaceRepository(
         highUrgeStartMinutes = proto.highUrgeStartMinutes.takeIf { it > 0 } ?: (15 * 60),
         highUrgeEndMinutes = proto.highUrgeEndMinutes.takeIf { it > 0 } ?: (18 * 60),
         personalValues = proto.personalValuesList.toList(),
+        ifThenPlans = proto.ifThenPlansList.mapNotNull(Playbook::decode),
         // Inverted in storage so an existing install that never saw this setting gets the agenda.
         autoCoachEnabled = !proto.autoCoachDisabled,
         workStartMinutes = proto.workStartMinutes.takeIf { it > 0 } ?: (9 * 60),

@@ -166,6 +166,9 @@ message PacePreferences {
   bool hide_alcohol_tracking = 91;
   bool hide_other_beverage_tracking = 92;
   string other_beverage_label = 93;
+
+  // If-then plans decided in advance, each stored as "cue<US>action" (unit separator, 0x1F).
+  repeated string if_then_plans = 94;
 }
 
 enum WidgetStateProto {
