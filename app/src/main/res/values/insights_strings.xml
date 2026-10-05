@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="insights_title">Insights</string>
+    <string name="insights_subtitle">YOUR PACE, IN PERSPECTIVE</string>
+    <string name="insights_trends">Trends</string>
+    <string name="insights_patterns">Patterns</string>
+    <string name="insights_savings">Savings</string>
+    <string name="insights_journey">Milestones &amp; history</string>
+    <string name="insights_journey_body">Your calendar, achievements and longer view</string>
+    <string name="insights_headline">Small steps.\nReal change.</string>
+    <string name="insights_average">cigarettes / day</string>
+    <!-- Range sizes are always 7, 14 or 30, never singular. -->
+    <string name="insights_coverage" tools:ignore="PluralsCandidate">%1$d of %2$d days recorded</string>
+    <string name="insights_previous_coverage" tools:ignore="PluralsCandidate">Previous period: %1$d of %2$d days recorded.</string>
+    <string name="insights_change_down">%1$s%% lower daily average</string>
+    <string name="insights_change_up">%1$s%% higher daily average</string>
+    <string name="insights_change_same">Daily average is holding steady</string>
+    <string name="insights_change_wait">Your first chapter is taking shape</string>
+    <string name="insights_range" tools:ignore="PluralsCandidate">%1$d days</string>
+    <string name="insights_complete_days">%1$s – %2$s · completed days</string>
+    <string name="insights_today_note">Today is still unfolding. Comparisons end yesterday.</string>
+    <string name="insights_chart_title">A little more perspective</string>
+    <string name="insights_chart_hint">Tap a bar to explore that day.</string>
+    <string name="insights_chart_legend">● Logged   ┄ Daily ceiling   · No record</string>
+    <string name="insights_day_description">%1$s: %2$s. %3$s</string>
+    <plurals name="insights_count">
+        <item quantity="one">%1$d cigarette</item>
+        <item quantity="other">%1$d cigarettes</item>
+    </plurals>
+    <string name="insights_unknown">No cigarette record</string>
+    <string name="insights_plan_count">Daily ceiling: %1$d</string>
+    <string name="insights_no_plan">No plan recorded</string>
+    <string name="insights_previous_day">Previous day</string>
+    <string name="insights_next_day">Next day</string>
+    <string name="insights_open_day">Open timeline</string>
+    <string name="insights_on_plan">On-plan days</string>
+    <string name="insights_plan_sample">Days with a plan: %1$d</string>
+    <string name="insights_typical_gap">Typical gap</string>
+    <string name="insights_gap_sample">Median · gaps measured: %1$d</string>
+    <string name="insights_saved">Estimated saved</string>
+    <string name="insights_avoided">Fewer than recorded baselines: %1$d</string>
+    <string name="insights_tools">Tools completed</string>
+    <string name="insights_tools_caption">Moments you made for yourself</string>
+    <string name="insights_empty_title">Every story starts somewhere.</string>
+    <string name="insights_empty_body">Log your day as it happens. Your first completed day will appear here tomorrow. You can also add past entries in your timeline.</string>
+    <string name="insights_add_history">Add past entries</string>
+    <string name="insights_heatmap_title">The rhythm of your week</string>
+    <string name="insights_heatmap_body">Cigarette logs by weekday and time. Stronger color means more logs in this period.</string>
+    <string name="insights_heatmap_cell">%1$s, %2$s. Logs: %3$d</string>
+    <string name="insights_heatmap_selected">%1$s · %2$s · Logs: %3$d</string>
+    <string name="insights_heatmap_low">Fewer</string>
+    <string name="insights_heatmap_high">More</string>
+    <string name="insights_triggers_title">Know your triggers</string>
+    <string name="insights_trigger_sample">Tagged check-ins: %1$d / %2$d</string>
+    <string name="insights_trigger_empty">A quick check-in connects the feeling to the moment. Add a trigger when an urge shows up to find your recurring patterns.</string>
+    <string name="insights_check_in">Check in</string>
+    <string name="insights_check_ins_label">Check-ins</string>
+    <string name="insights_help_title">What you come back to</string>
+    <string name="insights_help_body">Your completed tools, ordered by use. Urge changes appear only when you recorded both a before and after rating.</string>
+    <string name="insights_help_empty">Try a breathing exercise, a walk or a five-minute pause. Completed sessions will build your personal toolkit history here.</string>
+    <string name="insights_open_toolkit">Find a tool</string>
+    <string name="insights_tool_count">Completed: %1$d</string>
+    <string name="insights_tool_drop">Average urge drop: %1$s points · Rated: %2$d</string>
+    <string name="insights_tool_rise">Average urge rise: %1$s points · Rated: %2$d</string>
+    <string name="insights_tool_unrated">No paired ratings yet</string>
+    <string name="insights_drinks_title">Notice the connections</string>
+    <string name="insights_drinks_body">Cigarette logs within an hour after a drink. This shows timing, not a cause. Drink logs may be incomplete.</string>
+    <string name="insights_drink_following">After %1$s</string>
+    <string name="insights_drink_sample">Cigarette logs: %1$d / %2$d</string>
+    <string name="insights_export">Export daily CSV</string>
+    <string name="insights_exported">Daily report saved</string>
+    <string name="insights_export_failed">Could not save the report. Choose a destination and try again.</string>
+    <string name="savings_eyebrow">THE POSSIBILITY OF LESS</string>
+    <string name="savings_title">Make room for\nsomething better.</string>
+    <string name="savings_body">Explore what a small daily change could add up to.</string>
+    <string name="savings_fewer" tools:ignore="PluralsCandidate">%1$d fewer per day</string>
+    <string name="savings_from_baseline" tools:ignore="PluralsCandidate">Compared with your baseline of %1$d per day</string>
+    <string name="savings_30">30 days</string>
+    <string name="savings_90">90 days</string>
+    <string name="savings_365">1 year</string>
+    <!-- Scenario horizons are always 30, 90 or 365 days. -->
+    <string name="savings_scenario" tools:ignore="PluralsCandidate">Potential savings over %1$d days</string>
+    <string name="savings_chart_description" tools:ignore="PluralsCandidate">Linear savings scenario from zero to %1$s over %2$d days</string>
+    <plurals name="savings_avoided">
+        <item quantity="one">%1$d cigarette not bought</item>
+        <item quantity="other">%1$d cigarettes not bought</item>
+    </plurals>
+    <string name="savings_assumption">An estimate using your current pack price. This simulator does not change your plan.</string>
+    <string name="savings_price_needed">Give your progress a price.</string>
+    <string name="savings_price_body">Add a pack price in your plan to see savings and explore what fewer cigarettes could fund.</string>
+    <string name="savings_edit_plan">Edit my plan</string>
+    <string name="savings_reward">YOUR SOMETHING BETTER</string>
+    <plurals name="savings_reward_days">
+        <item quantity="one">About %1$d day to your reward at this pace</item>
+        <item quantity="other">About %1$d days to your reward at this pace</item>
+    </plurals>
+    <string name="savings_reward_complete">Your estimated savings have reached this goal.</string>
+    <string name="savings_reward_wait">Move the slider to explore a daily reduction.</string>
+    <string name="savings_reward_progress">%1$s of %2$s estimated saved</string>
+    <string name="savings_set_reward">Choose something worth saving for</string>
+    <string name="savings_set_reward_body">A weekend away, a dinner, a fresh start. Add a personal reward in your plan.</string>
+    <string name="pulse_eyebrow">A MOMENT FOR YOU</string>
+    <string name="today_pace_eyebrow">YOUR DAY, AT YOUR PACE</string>
+    <string name="pulse_title">Notice. Pause. Begin again.</string>
+    <string name="pulse_body">How you feel is part of the picture. A quick check-in helps you see what changes.</string>
+    <plurals name="pulse_reflected">
+        <item quantity="one">%1$d check-in today. Every observation counts.</item>
+        <item quantity="other">%1$d check-ins today. Every observation counts.</item>
+    </plurals>
+    <string name="pulse_journal">My journal</string>
+    <string name="checkin_title">How is this moment?</string>
+    <string name="checkin_body">A little curiosity, without judgment. This stays in your private journal.</string>
+    <string name="checkin_strength">Urge intensity</string>
+    <string name="checkin_rating">Urge intensity %1$d of 5</string>
+    <string name="checkin_low">Mild</string>
+    <string name="checkin_high">Strong</string>
+    <string name="checkin_triggers">What is around this feeling?</string>
+    <string name="checkin_optional">Optional · choose any that fit</string>
+    <string name="checkin_stress">Stress</string>
+    <string name="checkin_coffee">Coffee</string>
+    <string name="checkin_social">Social</string>
+    <string name="checkin_boredom">Boredom</string>
+    <string name="checkin_after_meal">After a meal</string>
+    <string name="checkin_alcohol">Alcohol</string>
+    <string name="checkin_routine">Routine</string>
+    <string name="checkin_note">A note to your future self</string>
+    <string name="checkin_save">Save check-in</string>
+    <string name="checkin_saved_title">You made a little space.</string>
+    <string name="checkin_saved_body">Your check-in is saved. Take this moment with you, or try a tool for a little extra support.</string>
+    <string name="checkin_done">Back to my day</string>
+    <string name="checkin_error">Your check-in could not be saved. Please try again.</string>
+    <string name="checkin_delete_title">Delete this check-in?</string>
+    <string name="checkin_delete_body">This removes its note, urge rating and triggers from your journal and insights.</string>
+    <string name="checkin_ledger_urge">Urge intensity: %1$d / 5</string>
+    <string name="checkin_ledger_change">Urge intensity: %1$d → %2$d / 5</string>
+    <string name="insights_private">Calculated on your device · your data, your perspective</string>
+</resources>

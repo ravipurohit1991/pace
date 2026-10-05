@@ -83,6 +83,7 @@ data class PaceUiState(
     val beveragesToday: BeverageCounts = BeverageCounts(),
     val habitTrend: HabitTrend? = null,
     val dailyCounts: List<DailyCount> = emptyList(),
+    val dailySnapshots: List<com.pace.reduction.domain.model.DailyPlanSnapshot> = emptyList(),
     val urgeSessionCount: Int = 0,
     val urgeSessions: List<UrgeSession> = emptyList(),
     val progress: ProgressMetrics? = null,
@@ -144,6 +145,8 @@ sealed interface PaceEvent {
     data class ApiKeyVerified(val modelCount: Int) : PaceEvent
     data object HistoryUpdated : PaceEvent
     data object HistoryRejected : PaceEvent
+    data object InsightsExported : PaceEvent
+    data object ReportExportFailed : PaceEvent
 }
 
 private data class CoreState(
@@ -337,6 +340,7 @@ class PaceViewModel(
                 firstDayOfWeek = firstDayOfWeek,
             ),
             dailyCounts = progress.days.takeLast(7).map { DailyCount(it.date, it.count) },
+            dailySnapshots = core.snapshots,
             urgeSessionCount = core.sessions.size,
             urgeSessions = core.sessions,
             progress = progress,
@@ -449,10 +453,15 @@ class PaceViewModel(
         }
     }
 
-    fun saveUrgeCheckIn(strength: Int?, triggers: Set<String>, note: String) {
-        viewModelScope.launch {
-            repository.saveUrgeCheckIn(strength, triggers, note)
+    suspend fun saveUrgeCheckIn(strength: Int?, triggers: Set<String>, note: String): Boolean {
+        return try {
+            repository.saveUrgeCheckIn(strength?.coerceIn(1, 5), triggers, note.take(500), tool = "CHECK_IN")
             _events.emit(PaceEvent.CheckInSaved)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -790,6 +799,7 @@ class PaceViewModel(
         viewModelScope.launch {
             when (metric) {
                 HabitMetric.CIGARETTES -> repository.deleteLog(id)
+                HabitMetric.CHECK_INS -> repository.deleteCheckIn(id)
                 else -> repository.deleteBeverageLog(id)
             }
             _editorLogs.value = repository.logsOn(_editorDate.value)
@@ -891,6 +901,25 @@ class PaceViewModel(
                 }
             }
             _events.emit(if (result.isSuccess) PaceEvent.BackupExported else PaceEvent.BackupFailed)
+        }
+    }
+
+    fun exportInsights(uri: Uri, rangeDays: Int) {
+        val state = uiState.value
+        if (state.loading) return
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val report = com.pace.reduction.domain.PaceInsightsCalculator.calculate(
+                        state.now, ZoneId.systemDefault(), state.activeLogs, state.activeBeverageLogs,
+                        state.urgeSessions, state.dailySnapshots, rangeDays,
+                    ).toCsv()
+                    getApplication<PaceApplication>().contentResolver.openOutputStream(uri, "wt")
+                        ?.bufferedWriter(Charsets.UTF_8)?.use { it.write(report) }
+                        ?: error("Cannot open report destination")
+                }
+            }
+            _events.emit(if (result.isSuccess) PaceEvent.InsightsExported else PaceEvent.ReportExportFailed)
         }
     }
 

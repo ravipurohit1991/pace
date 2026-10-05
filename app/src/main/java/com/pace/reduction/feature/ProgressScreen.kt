@@ -64,6 +64,7 @@ internal fun ProgressScreen(
     onOpenSettings: () -> Unit,
     onOpenLedger: () -> Unit,
     onToggleSteps: (Boolean) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val metrics = requireNotNull(uiState.progress)
     val quit = uiState.quit
@@ -81,7 +82,8 @@ internal fun ProgressScreen(
     )
 
     PaceScreen(
-        title = stringResource(R.string.progress_title),
+        title = stringResource(R.string.insights_journey),
+        onBack = onBack,
         actions = {
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title))

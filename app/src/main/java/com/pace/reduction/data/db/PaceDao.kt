@@ -117,6 +117,9 @@ interface PaceDao {
     @Query("DELETE FROM urge_sessions")
     suspend fun deleteAllUrgeSessions()
 
+    @Query("DELETE FROM urge_sessions WHERE id = :id AND tool = 'CHECK_IN'")
+    suspend fun deleteCheckIn(id: String): Int
+
     @Query("DELETE FROM daily_plan_snapshots")
     suspend fun deleteAllDailySnapshots()
 

@@ -7,6 +7,7 @@ import com.pace.reduction.data.db.AchievementEntity
 import com.pace.reduction.data.db.CigaretteLogEntity
 import com.pace.reduction.data.db.DailyPlanSnapshotEntity
 import com.pace.reduction.data.db.PaceDatabase
+import com.pace.reduction.data.db.UrgeSessionEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -56,5 +57,21 @@ class PaceDaoTest {
         assertTrue(dao.insertAchievement(badge) > 0)
         assertEquals(-1L, dao.insertAchievement(badge))
         assertEquals(1, dao.observeAchievements().first().size)
+    }
+
+    @Test
+    fun deletingCheckInPreservesToolSessionsAndOtherJournalEntries() = runBlocking {
+        val dao = database.paceDao()
+        val entry = UrgeSessionEntity("journal", 100, null, "CHECK_IN", 4, null,
+            "[\"stress\"]", "A short walk helped", false, null, null)
+        dao.upsertUrgeSession(entry)
+        dao.upsertUrgeSession(entry.copy(id = "other-journal"))
+        dao.upsertUrgeSession(entry.copy(id = "tool", tool = "BREATHING", completed = true))
+        assertEquals(0, dao.deleteCheckIn("tool"))
+        assertEquals(1, dao.deleteCheckIn("journal"))
+        assertEquals(0, dao.deleteCheckIn("journal"))
+        val remaining = dao.observeUrgeSessions().first()
+        assertEquals(setOf("other-journal", "tool"), remaining.map { it.id }.toSet())
+        assertEquals("A short walk helped", remaining.first().note)
     }
 }
