@@ -2,9 +2,8 @@ import com.google.protobuf.gradle.id
 import java.util.Properties
 
 /**
- * Personal provisioning values live in `local.properties`, which is git-ignored. They let an owner
- * bake their own Ollama key and existing smoking history into a private build. Every key is
- * optional: absent values compile to empty/zero and the app behaves like a clean install.
+ * Personal provisioning is available only in explicitly opted-in debug builds. Normal debug
+ * builds and every release use empty defaults, even on a workstation with private local values.
  */
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -13,6 +12,9 @@ val localProperties = Properties().apply {
 
 fun localValue(key: String, fallback: String = ""): String =
     (localProperties.getProperty(key) ?: System.getenv(key.replace('.', '_').uppercase()) ?: fallback).trim()
+
+fun buildConfigString(value: String): String = "\"" + value.replace("\\", "\\\\")
+    .replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 
 /**
  * Release signing material. Locally it comes from `keystore.properties` (git-ignored, and pointing at
@@ -54,14 +56,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
-        // Provisioning from local.properties (git-ignored). Empty defaults = clean install.
-        buildConfigField("String", "SEED_OLLAMA_KEY", "\"${localValue("pace.ollamaApiKey")}\"")
-        buildConfigField("String", "SEED_OLLAMA_MODEL", "\"${localValue("pace.ollamaModel")}\"")
-        buildConfigField("int", "SEED_YESTERDAY_COUNT", localValue("pace.seedYesterday", "0"))
-        buildConfigField("int", "SEED_TODAY_COUNT", localValue("pace.seedToday", "0"))
-        buildConfigField("String", "SEED_LAST_TIME", "\"${localValue("pace.seedLastTime")}\"")
-        buildConfigField("int", "SEED_CEILING", localValue("pace.seedCeiling", "0"))
-        buildConfigField("int", "SEED_SPACING", localValue("pace.seedSpacing", "0"))
+        buildConfigField("String", "SEED_OLLAMA_KEY", "\"\"")
+        buildConfigField("String", "SEED_OLLAMA_MODEL", "\"\"")
+        buildConfigField("int", "SEED_YESTERDAY_COUNT", "0")
+        buildConfigField("int", "SEED_TODAY_COUNT", "0")
+        buildConfigField("String", "SEED_LAST_TIME", "\"\"")
+        buildConfigField("int", "SEED_CEILING", "0")
+        buildConfigField("int", "SEED_SPACING", "0")
     }
 
     signingConfigs {
@@ -80,6 +81,15 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            if (providers.gradleProperty("pace.privateProvisioning").orNull == "true") {
+                buildConfigField("String", "SEED_OLLAMA_KEY", buildConfigString(localValue("pace.ollamaApiKey")))
+                buildConfigField("String", "SEED_OLLAMA_MODEL", buildConfigString(localValue("pace.ollamaModel")))
+                buildConfigField("String", "SEED_LAST_TIME", buildConfigString(localValue("pace.seedLastTime")))
+                mapOf("SEED_YESTERDAY_COUNT" to "pace.seedYesterday", "SEED_TODAY_COUNT" to "pace.seedToday",
+                    "SEED_CEILING" to "pace.seedCeiling", "SEED_SPACING" to "pace.seedSpacing").forEach { (field, key) ->
+                    buildConfigField("int", field, (localValue(key).toIntOrNull()?.coerceAtLeast(0) ?: 0).toString())
+                }
+            }
         }
         release {
             isMinifyEnabled = true

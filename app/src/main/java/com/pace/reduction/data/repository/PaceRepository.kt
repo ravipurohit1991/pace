@@ -355,6 +355,8 @@ class PaceRepository(
 
     suspend fun deleteBeverageLog(id: String): Boolean = dao.deleteBeverageLog(id) > 0
 
+    suspend fun deleteCheckIn(id: String): Boolean = dao.deleteCheckIn(id) > 0
+
     suspend fun saveUrgeCheckIn(
         urgeBefore: Int?,
         triggerTags: Set<String>,

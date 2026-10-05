@@ -144,6 +144,9 @@ private data object ToolkitDestination : NavKey
 private data object ProgressDestination : NavKey
 
 @Serializable
+private data object JourneyDestination : NavKey
+
+@Serializable
 private data object SettingsDestination : NavKey
 
 @Serializable
@@ -173,6 +176,8 @@ fun PaceApp(viewModel: PaceViewModel) {
     val coachSavedMessage = stringResource(R.string.coach_settings_saved)
     val historyUpdatedMessage = stringResource(R.string.history_updated)
     val historyRejectedMessage = stringResource(R.string.history_rejected)
+    val reportExportedMessage = stringResource(R.string.insights_exported)
+    val reportFailedMessage = stringResource(R.string.insights_export_failed)
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -212,6 +217,8 @@ fun PaceApp(viewModel: PaceViewModel) {
                 is PaceEvent.ApiKeyVerified -> Unit
                 PaceEvent.HistoryUpdated -> snackbarHostState.showSnackbar(historyUpdatedMessage)
                 PaceEvent.HistoryRejected -> snackbarHostState.showSnackbar(historyRejectedMessage)
+                PaceEvent.InsightsExported -> snackbarHostState.showSnackbar(reportExportedMessage)
+                PaceEvent.ReportExportFailed -> snackbarHostState.showSnackbar(reportFailedMessage)
             }
         }
     }
@@ -298,11 +305,12 @@ private fun MainShell(
         }
     }
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
+    var checkInOpen by rememberSaveable { mutableStateOf(false) }
     val navigationItems = listOf(
         NavigationItem(TodayDestination, R.string.nav_today, Icons.Outlined.Home),
         NavigationItem(CoachDestination, R.string.nav_coach, Icons.Outlined.Forum),
         NavigationItem(ToolkitDestination, R.string.nav_toolkit, Icons.Outlined.Psychology),
-        NavigationItem(ProgressDestination, R.string.nav_progress, Icons.Outlined.BarChart),
+        NavigationItem(ProgressDestination, R.string.insights_title, Icons.Outlined.BarChart),
     )
     val current = backStack.lastOrNull()
     // Tabs are siblings rather than a history: moving between them replaces the stack instead of
@@ -312,6 +320,13 @@ private fun MainShell(
         backStack.clear()
         backStack.add(TodayDestination)
         if (key != TodayDestination) backStack.add(key)
+    }
+    if (checkInOpen) {
+        CheckInSheet(
+            onDismiss = { checkInOpen = false },
+            onSave = viewModel::saveUrgeCheckIn,
+            onOpenToolkit = { checkInOpen = false; switchTab(ToolkitDestination) },
+        )
     }
     val motion = LocalMotion.current
     val haptics = LocalHapticFeedback.current
@@ -330,9 +345,9 @@ private fun MainShell(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 navigationItems.forEach { item ->
-                    val selected = current == item.key
+                    val selected = current == item.key || (current == JourneyDestination && item.key == ProgressDestination)
                     NavigationBarItem(
                         selected = selected,
                         onClick = {
@@ -383,6 +398,11 @@ private fun MainShell(
                         onOpenCoach = { switchTab(CoachDestination) },
                         onOpenPlan = { backStack.add(PlanDestination) },
                         onOpenSettings = { backStack.add(SettingsDestination) },
+                        onCheckIn = { checkInOpen = true },
+                        onOpenJournal = {
+                            viewModel.selectEditorDate(uiState.now.atZone(java.time.ZoneId.systemDefault()).toLocalDate())
+                            backStack.add(HistoryDestination)
+                        },
                     )
                 }
                 entry<CoachDestination>(metadata = tabTransition) {
@@ -411,11 +431,24 @@ private fun MainShell(
                     )
                 }
                 entry<ProgressDestination>(metadata = tabTransition) {
+                    InsightsScreen(
+                        uiState = uiState,
+                        onOpenSettings = { backStack.add(SettingsDestination) },
+                        onOpenJourney = { backStack.add(JourneyDestination) },
+                        onOpenDay = { date -> viewModel.selectEditorDate(date); backStack.add(HistoryDestination) },
+                        onOpenPlan = { backStack.add(PlanDestination) },
+                        onOpenToolkit = { switchTab(ToolkitDestination) },
+                        onCheckIn = { checkInOpen = true },
+                        onExport = viewModel::exportInsights,
+                    )
+                }
+                entry<JourneyDestination> {
                     ProgressScreen(
                         uiState = uiState,
                         onOpenSettings = { backStack.add(SettingsDestination) },
                         onOpenLedger = { backStack.add(HistoryDestination) },
                         onToggleSteps = viewModel::setStepCounting,
+                        onBack = { backStack.removeLastOrNull() },
                     )
                 }
                 entry<SettingsDestination> {
@@ -452,6 +485,8 @@ private fun TodayScreen(
     onOpenCoach: () -> Unit,
     onOpenPlan: () -> Unit,
     onOpenSettings: () -> Unit,
+    onCheckIn: () -> Unit,
+    onOpenJournal: () -> Unit,
 ) {
     val today = requireNotNull(uiState.today)
     val quit = uiState.quit
@@ -510,6 +545,9 @@ private fun TodayScreen(
                     }
                 }
             }
+        }
+        if (!resting) item {
+            TodayReflectionCard(uiState, onCheckIn, onOpenJournal)
         }
         val enabledBeverages = buildSet {
             if (uiState.settings.coffeeTrackingEnabled) add(BeverageType.COFFEE)
@@ -760,17 +798,18 @@ private fun PacingHero(uiState: PaceUiState) {
 
     // The card itself carries the accent as a faint wash, so the hero belongs to the current state
     // rather than sitting on neutral card stock like every other section.
-    val wash = accent.copy(alpha = if (isSystemInDarkTheme()) 0.16f else 0.10f)
+    val wash = MaterialTheme.colorScheme.primaryContainer
     val animatedWash by animateColorAsState(wash, motion.eased(500), label = "heroWash")
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Box(
             modifier = Modifier.background(
-                Brush.verticalGradient(listOf(animatedWash, Color.Transparent)),
+                Brush.linearGradient(listOf(animatedWash, MaterialTheme.colorScheme.secondaryContainer)),
             ),
         ) {
             Column(
@@ -778,12 +817,18 @@ private fun PacingHero(uiState: PaceUiState) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                Text(
+                    stringResource(R.string.today_pace_eyebrow),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                )
                 ProgressRing(
                     count = today.count,
                     ceiling = today.ceiling,
                     accent = accent,
                     windowProgress = windowProgress,
-                    glow = windowOpen,
+                    glow = false,
                     modifier = if (windowOpen) Modifier.breathe(0.985f, 1.015f) else Modifier,
                 )
                 StatusLine(title = statusTitle, accent = accent, live = windowProgress != null)
@@ -1330,6 +1375,7 @@ private fun PlanScreen(uiState: PaceUiState, onSavePlan: (PlanSettings) -> Unit,
 internal fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.LocalDrink
 import androidx.compose.material.icons.outlined.SmokingRooms
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +54,7 @@ import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
 import com.pace.reduction.domain.HabitMetric
+import com.pace.reduction.domain.insightLabel
 import com.pace.reduction.domain.model.BeverageLog
 import com.pace.reduction.domain.model.BeverageType
 import com.pace.reduction.domain.model.CigaretteLog
@@ -73,6 +75,10 @@ private data class LedgerEntry(
     val source: String,
     val reversed: Boolean,
     val editable: Boolean = true,
+    val note: String? = null,
+    val triggers: Set<String> = emptySet(),
+    val urgeBefore: Int? = null,
+    val urgeAfter: Int? = null,
 )
 
 /** A single, auditable timeline for every manually logged habit event. */
@@ -89,6 +95,21 @@ internal fun HistoryEditorScreen(
     var minute by rememberSaveable { mutableStateOf(LocalTime.now().minute.toString().padStart(2, '0')) }
     var metric by rememberSaveable { mutableStateOf(HabitMetric.CIGARETTES) }
     var filter by rememberSaveable { mutableStateOf(LedgerFilter.ALL) }
+    var checkInToDelete by rememberSaveable { mutableStateOf<String?>(null) }
+
+    checkInToDelete?.let { id ->
+        AlertDialog(
+            onDismissRequest = { checkInToDelete = null },
+            title = { Text(stringResource(R.string.checkin_delete_title)) },
+            text = { Text(stringResource(R.string.checkin_delete_body)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deleteLedgerEntry(HabitMetric.CHECK_INS, id); checkInToDelete = null }) {
+                    Text(stringResource(R.string.history_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { checkInToDelete = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 
     LaunchedEffect(Unit) { viewModel.refreshEditorLogs() }
 
@@ -277,7 +298,10 @@ internal fun HistoryEditorScreen(
                         LedgerRow(
                             entry = entry,
                             otherLabel = uiState.settings.otherBeverageLabel,
-                            onDelete = { viewModel.deleteLedgerEntry(entry.metric, entry.id) },
+                            onDelete = {
+                                if (entry.metric == HabitMetric.CHECK_INS) checkInToDelete = entry.id
+                                else viewModel.deleteLedgerEntry(entry.metric, entry.id)
+                            },
                         )
                         if (index != visibleEntries.lastIndex) HorizontalDivider()
                     }
@@ -311,7 +335,11 @@ private fun ledgerEntries(
                 occurredAt = it.startedAt,
                 source = it.tool,
                 reversed = false,
-                editable = false,
+                editable = it.tool == "CHECK_IN",
+                note = it.note,
+                triggers = it.triggerTags,
+                urgeBefore = it.urgeBefore,
+                urgeAfter = it.urgeAfter,
             ),
         )
     }
@@ -352,11 +380,26 @@ private fun LedgerRow(entry: LedgerEntry, otherLabel: String, onDelete: () -> Un
                 stringResource(
                     if (entry.reversed) R.string.ledger_reversed_at else R.string.ledger_recorded_at,
                     entry.occurredAt.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
-                    entry.source.lowercase().replaceFirstChar(Char::uppercase),
+                    entry.source.removePrefix("MOVE:").insightLabel(),
                 ),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            entry.urgeBefore?.let { before ->
+                Text(
+                    if (entry.urgeAfter == null) stringResource(R.string.checkin_ledger_urge, before)
+                    else stringResource(R.string.checkin_ledger_change, before, entry.urgeAfter),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            if (entry.triggers.isNotEmpty()) {
+                Text(entry.triggers.sorted().joinToString(" · ") { it.insightLabel() },
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            }
+            entry.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Text(note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            }
         }
         if (entry.editable) {
             IconButton(onClick = onDelete) {
