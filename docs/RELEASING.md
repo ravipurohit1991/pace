@@ -40,6 +40,12 @@ git tag -a v0.2.0 -m "Pace 0.2.0"
 git push origin v0.2.0
 ```
 
+If pushing tags is not possible (a restricted environment, or no local checkout), run the
+**Release** workflow by hand instead: set `tag` to the new version and `ref` to the branch or
+commit to release. It builds and signs from that ref, creates the annotated tag only once the APK
+has been verified, and publishes the release exactly as a tag push would. It refuses to run if the
+tag already exists; leave `ref` empty to rebuild an existing tag.
+
 The workflow then derives the version, fails fast if any signing secret is missing rather
 than publishing an unsigned APK, runs the unit tests, builds and signs, verifies the result
 with `apksigner`, and publishes the release.
