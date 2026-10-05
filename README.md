@@ -70,6 +70,55 @@ the Toolkit asks the coach for one specific thing to do, and offers to time that
 > In the next 5 minutes, raid the kitchen for the weirdest utensil you can find  maybe that banana slicer
 > or a novelty ice-cream fork  and give it a dramatic backstory you'll record in a quick voice memo. 🌱
 
+### Play, not just talk
+
+Novelty holds attention better than willpower does, and a puzzle nobody has seen before is the one
+distraction an app cannot ship in advance. The **AI arcade** in the Toolkit has three games the
+model writes on the spot, each asked for as one structured JSON payload (Ollama's `format` schema),
+validated hard on the device, and then played entirely offline:
+
+- **Story quest**: a five-scene story you steer with a tap. Pick a genre (cosy mystery, heist,
+  space adventure…), read a short scene, choose one of three paths, and the next scene follows from
+  your choice until it lands an ending.
+- **Trivia sprint**: five fresh multiple-choice questions on a topic you pick, each with a one-line
+  surprising fact revealed whether you got it right or not.
+- **Emoji decoder**: a few emoji spell out a film, a saying or a thing. Type your guess; matching
+  forgives articles, punctuation, accents and a typo or two.
+
+Trivia and emoji puzzles fall back to a built-in bank when there is no key or no signal, so the
+arcade still opens at the minute it is needed. Anything generated is filtered against the same
+vocabulary the coach is never allowed to use.
+
+### The coach can hand you something to do
+
+A chat reply can now end in an action. The model is given the app's real tool list and may attach
+one invisible `[[do:ID]]` tag; the bubble shows the words and a button underneath — *Open Paced
+breathing*, *Open Trivia sprint*, *Open Five-minute walk* — that jumps straight into that tool. Ids are
+checked against the app's tool directory, so an invented one opens nothing, and half a tag still
+streaming in is never shown.
+
+### Pick for me
+
+At the worst minute, choosing between a dozen tools is itself the obstacle. The **Pick for me** card
+asks one optional question — how strong is it, 1 to 5 — and lets the coach choose: it weighs the
+hour, your grounded figures, what you used last and which tools have measurably eased things for you
+before, then answers with an id the app can open and one sentence that makes starting it sound easy.
+With the coach off, the same decision is made on the device from your own records. After a picked
+tool finishes, one optional tap rates how strong it is now, and that before/after pair becomes
+evidence for the next pick.
+
+**Your go-tos** sits beside it: what you used last, one tap to reopen, and the tools whose before and
+after ratings show they actually help you — all computed locally.
+
+### A playbook decided in advance
+
+If-then plans — *if it is 3pm and I am at my desk, then I refill my water and walk the long way
+back* — are one of the better-evidenced tricks in behaviour change: the plan fires on the cue instead
+of waiting for a decision in the minute least suited to making one. The **Playbook** keeps up to six.
+The coach drafts three at a time from your hardest stretch, situations and values; you keep the ones
+that sound like you or write your own. They sit on Today, travel in backups, and are handed to the
+coach, which reminds you of your own plan when one of its cues is happening.
+
 ### It reaches out first
 
 Two kinds of notification, both written fresh by the model and both opening straight into the chat:
@@ -285,7 +334,7 @@ preferences store, so it is never at rest in readable form. **Remove key** clear
 
 - The key lives only on your device. It is never logged, included in JSON exports, or committed to this repository.
 - Requests go to `https://ollama.com` over HTTPS. Nothing is sent until you enable the coach and save a key.
-- Only the current text/voice turn, explicitly attached image, and grounded figures listed above are transmitted — never your raw log history, notes, or locations.
+- Only the current text/voice turn, explicitly attached image, and grounded figures listed above are transmitted — never your raw log history, notes, or locations. Arcade games send only the topic or genre (and a story's scenes so far); Pick for me adds the strength you reported, your recent tool names and their before/after rating averages; Playbook drafts add the plans you already keep. See [PRIVACY.md](PRIVACY.md).
 - Reasoning traces returned by thinking models are discarded. Chat replies are kept in chat history; voice-call turns are memory-only.
 - Turn the coach off and Pace is fully offline again.
 
@@ -351,7 +400,7 @@ holds the singletons.
 | --- | --- | --- |
 | UI | `feature/` | Today, Coach, Toolkit, Progress, Plan, Settings, onboarding, shared components |
 | Presentation | `PaceViewModel.kt` | `PaceUiState` from combined flows, plus transient `CoachUiState` for streaming |
-| Domain | `domain/` | Pacing, progress, quit metrics, badge rules, coach prompt construction |
+| Domain | `domain/` | Pacing, progress, quit metrics, badge rules, coach prompt construction, arcade parsing, tool directory |
 | Data | `data/` | Room database, Proto DataStore preferences, JSON backup import/export |
 | Platform | `core/` | Ollama client, Keystore vault, notifications, link allowlist |
 
@@ -363,6 +412,12 @@ Notable pieces:
 - **`domain/CoachPrompt.kt`**  the default persona and the exact facts each request may include.
 - **`domain/QuitProgress.kt`**  smoke-free duration, streaks, avoided cigarettes, recovery milestones.
 - **`domain/AdaptiveSpacing.kt`**  how the minimum gap grows with steady days.
+- **`domain/ToolDirectory.kt`** — every tool the coach, the pick-for-me agent and the stats may open by id.
+- **`domain/CoachActions.kt`** — parsing and hiding the `[[do:ID]]` tags that turn a reply into a button.
+- **`domain/AiArcade.kt`** — arcade payload validation, forgiving answer matching, offline rounds.
+- **`domain/ToolInsights.kt`** — which tools you use and which ones help, plus the offline picker.
+- **`domain/Playbook.kt`** — if-then plan storage and parsing of the coach's drafts.
+- **`CoachExtras.kt`** — transient state for arcade rounds, the agent's pick and playbook drafts.
 - **`data/seed/ProvisioningSeeder.kt`**  one-time import of a private build's key and history.
 - **`worker/PaceWorkers.kt`**  nudge and check-in workers plus rollover, widget refresh, badge review.
 

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.PhoneInTalk
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Close
@@ -39,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +69,7 @@ import com.pace.reduction.CoachUiState
 import com.pace.reduction.PaceUiState
 import com.pace.reduction.PaceViewModel
 import com.pace.reduction.R
+import com.pace.reduction.domain.CoachActions
 import com.pace.reduction.domain.CoachImageMemory
 import com.pace.reduction.domain.model.CoachMessage
 import java.io.ByteArrayOutputStream
@@ -84,6 +87,8 @@ internal fun CoachScreen(
     viewModel: PaceViewModel,
     onOpenSettings: () -> Unit,
     onStartCall: () -> Unit,
+    /** Opens a toolkit tool by its [com.pace.reduction.domain.ToolDirectory] id. */
+    onOpenTool: (String) -> Unit = {},
 ) {
     val coach by viewModel.coachState.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
@@ -177,18 +182,33 @@ internal fun CoachScreen(
                 item { CoachEmptyState(onStarter = { draft = it }) }
             }
             items(messages, key = CoachMessage::id) { message ->
-                ChatBubble(
-                    text = CoachImageMemory.displayContent(message.content),
-                    fromUser = message.isUser,
-                    hasImage = message.isUser && CoachImageMemory.hasImage(message.content),
-                )
+                if (message.isUser) {
+                    ChatBubble(
+                        text = CoachImageMemory.displayContent(message.content),
+                        fromUser = true,
+                        hasImage = CoachImageMemory.hasImage(message.content),
+                    )
+                } else {
+                    // The coach may have handed over a tool; the tag becomes a button, never text.
+                    val action = CoachActions.extract(message.content, uiState.ai.isReady)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ChatBubble(text = CoachActions.strip(message.content), fromUser = false)
+                        if (action != null) {
+                            CoachActionButton(
+                                title = stringResource(toolTitleRes(action.id)),
+                                onClick = { onOpenTool(action.id) },
+                            )
+                        }
+                    }
+                }
             }
             if (coach.busy) {
                 item {
-                    if (coach.streamingReply.isBlank()) {
+                    val streaming = CoachActions.strip(coach.streamingReply)
+                    if (streaming.isBlank()) {
                         ThinkingBubble()
                     } else {
-                        ChatBubble(text = coach.streamingReply, fromUser = false)
+                        ChatBubble(text = streaming, fromUser = false)
                     }
                 }
             }
@@ -259,6 +279,8 @@ private fun CoachEmptyState(onStarter: (String) -> Unit) {
         stringResource(R.string.coach_starter_urge),
         stringResource(R.string.coach_starter_bored),
         stringResource(R.string.coach_starter_why),
+        stringResource(R.string.coach_starter_game),
+        stringResource(R.string.coach_starter_fact),
     )
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
@@ -328,6 +350,16 @@ private fun ChatBubble(text: String, fromUser: Boolean, hasImage: Boolean = fals
                 if (text.isNotBlank()) Text(text = text, style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+}
+
+/** The coach's suggested tool, as a tappable chip right under the message that offered it. */
+@Composable
+private fun CoachActionButton(title: String, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, modifier = Modifier.padding(start = 4.dp)) {
+        Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(6.dp))
+        Text(stringResource(R.string.coach_action_open, title))
     }
 }
 
