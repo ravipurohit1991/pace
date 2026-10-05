@@ -30,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,6 @@ import com.pace.reduction.R
 import com.pace.reduction.domain.AutopilotReason
 import com.pace.reduction.domain.ToolDirectory
 import com.pace.reduction.domain.ToolStat
-import java.util.Locale
 
 /** The user-facing name of anything [ToolDirectory] can open. */
 internal fun toolTitleRes(id: String): Int = when (id) {
@@ -199,6 +199,7 @@ internal fun GoToCard(
 ) {
     val helpful = stats.filter { it.rated > 0 && (it.averageDrop ?: 0.0) > 0.0 }.take(3)
     if (recent.isEmpty() && helpful.isEmpty()) return
+    val locale = LocalConfiguration.current.locales[0]
     SectionCard {
         Text(stringResource(R.string.goto_title), style = MaterialTheme.typography.titleLarge)
         if (recent.isNotEmpty()) {
@@ -242,7 +243,7 @@ internal fun GoToCard(
                         Text(
                             stringResource(
                                 R.string.goto_stat,
-                                String.format(Locale.getDefault(), "%.1f", stat.averageDrop ?: 0.0),
+                                String.format(locale, "%.1f", stat.averageDrop ?: 0.0),
                                 stat.rated,
                             ),
                             style = MaterialTheme.typography.bodySmall,
