@@ -9,10 +9,10 @@ package com.pace.reduction.domain
  * history so the model keeps seeing the convention it is expected to follow.
  */
 object CoachActions {
-    private val COMPLETE_TAG = Regex("""\[\[\s*do\s*:\s*([A-Za-z0-9_:\-]{1,40})\s*]]""", RegexOption.IGNORE_CASE)
+    private val COMPLETE_TAG = Regex("""\[\[\s*do\s*:\s*([A-Za-z0-9_:\-]{1,40})\s*\]\]""", RegexOption.IGNORE_CASE)
 
     /** An unfinished tag at the very end of a streaming reply, e.g. `[[do:BRE`. */
-    private val TRAILING_PARTIAL = Regex("""\[(\[[^\]]{0,48}]?)?$""")
+    private val TRAILING_PARTIAL = Regex("""\[(\[[^\]]{0,48}\]?)?$""")
 
     /** The tool the reply points at, or null when it names nothing the app can open. */
     fun extract(text: String, coachReady: Boolean = true): ToolDirectory.Entry? =

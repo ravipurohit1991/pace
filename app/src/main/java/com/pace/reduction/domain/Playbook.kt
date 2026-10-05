@@ -42,7 +42,7 @@ object Playbook {
     fun parseSuggestions(raw: String): List<IfThenPlan> {
         val cleaned = ArcadeParser.stripFences(raw)
         val pattern = Regex(
-            """\{\s*"if"\s*:\s*"((?:[^"\\]|\\.){1,200})"\s*,\s*"then"\s*:\s*"((?:[^"\\]|\\.){1,200})"\s*}""",
+            """\{\s*"if"\s*:\s*"((?:[^"\\]|\\.){1,200})"\s*,\s*"then"\s*:\s*"((?:[^"\\]|\\.){1,200})"\s*\}""",
         )
         return sanitise(
             pattern.findAll(cleaned).map { match ->

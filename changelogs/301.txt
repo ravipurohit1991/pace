@@ -1,0 +1,5 @@
+Pace 0.3.1 fixes the app closing immediately on launch.
+
+- Fixed a crash on startup in every release build: code shrinking renamed fields the settings storage looks up by name, so the app died before showing anything. Earlier releases were affected too
+- Includes the Insights screen, Savings Lab and quick check-in sheet
+- Every change is now launched on an Android emulator in CI (onboarding and every tab), so a build that cannot open is caught before release
