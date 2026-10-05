@@ -58,8 +58,9 @@ launch() {
 }
 
 walk_tabs() {
-  for tab in Toolkit Coach Progress Today; do
-    tap_text "$tab" && crash_check "open $tab tab"
+  # A tab that cannot be found fails the run: a renamed label must not quietly skip a screen.
+  for tab in Toolkit Coach Insights Today; do
+    if tap_text "$tab"; then crash_check "open $tab tab"; else FAILED=1; fi
   done
   adb shell input swipe 540 1800 540 500 300; sleep 1
   adb shell input swipe 540 1800 540 500 300
