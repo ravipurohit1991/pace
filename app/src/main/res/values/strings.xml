@@ -781,4 +781,107 @@
     <string name="agenda_morning_fallback">New day. Pick the stretch you already know is hardest, and decide now what you will do instead.</string>
     <string name="agenda_move_fallback">Four minutes on your feet. It works on the moment itself, not just the clock.</string>
     <string name="agenda_evening_fallback">That is today done. Whatever it was, it is behind you now.</string>
+
+    <!-- 0.3.0: AI arcade -->
+    <string name="arcade_title">AI arcade</string>
+    <string name="arcade_body">Games written fresh by your coach every time, so there is always something new to chew on.</string>
+    <string name="arcade_body_offline">Trivia and emoji puzzles work offline from a built-in bank. Turn on the AI coach for fresh rounds and Story Quest.</string>
+    <string name="arcade_evidence">Novelty grabs attention harder than willpower can. A puzzle you have never seen is a few minutes your head spends somewhere else.</string>
+    <string name="arcade_start">Deal me in</string>
+    <string name="arcade_next">Next</string>
+    <string name="arcade_see_score">See my score</string>
+    <string name="arcade_again">Another round</string>
+    <string name="arcade_done">Done</string>
+    <string name="arcade_dealing">Dealing a new round…</string>
+    <string name="arcade_progress">%1$d of %2$d</string>
+    <string name="arcade_score">%1$d / %2$d</string>
+    <string name="arcade_score_perfect">A clean sweep. Your brain was fully somewhere else for a while.</string>
+    <string name="arcade_score_good">Solid round. The minutes went by while you were busy.</string>
+    <string name="arcade_score_any">The score is not the point: the last few minutes went to this instead.</string>
+    <string name="arcade_offline_bank">No coach set up, so this round comes from the built-in bank.</string>
+    <string name="arcade_offline_round">Offline round</string>
+    <string name="trivia_title">Trivia sprint</string>
+    <string name="trivia_summary">Five quick questions on a topic you pick</string>
+    <string name="trivia_pick_topic">Pick a topic</string>
+    <string name="trivia_loading">Writing your questions…</string>
+    <string name="emoji_title">Emoji decoder</string>
+    <string name="emoji_summary">Work out the film, saying or thing behind the emoji</string>
+    <string name="emoji_intro">Each puzzle is a few emoji that spell out a film, a saying, a food or an everyday thing. Type your guess; close enough counts.</string>
+    <string name="emoji_loading">Hiding things in emoji…</string>
+    <string name="emoji_guess_label">Your guess</string>
+    <string name="emoji_check">Check</string>
+    <string name="emoji_hint">Hint</string>
+    <string name="emoji_hint_value">Hint: %1$s</string>
+    <string name="emoji_reveal">Reveal</string>
+    <string name="emoji_not_quite">Not quite. Try another angle.</string>
+    <string name="emoji_correct">Yes! %1$s</string>
+    <string name="emoji_answer_was">It was: %1$s</string>
+    <string name="story_title">Story quest</string>
+    <string name="story_summary">A five-scene story you steer, written as you go</string>
+    <string name="story_evidence">A story you are steering needs your full attention to follow, and nobody, not even the app, knows how this one ends.</string>
+    <string name="story_needs_coach">Story quest is written live by the AI coach. Set it up in Settings to play.</string>
+    <string name="story_pick_genre">Pick a kind of story</string>
+    <string name="story_begin">Begin</string>
+    <string name="story_loading">Setting the scene…</string>
+    <string name="story_turning">Turning the page…</string>
+    <string name="story_beat">Scene %1$d of %2$d</string>
+    <string name="story_the_end">The end</string>
+    <string name="story_new">New story</string>
+
+    <!-- 0.3.0: Pick for me -->
+    <string name="autopilot_title">Pick for me</string>
+    <string name="autopilot_body">Too much to decide right now? Your coach picks one thing from your toolkit that fits this moment and what has worked for you before.</string>
+    <string name="autopilot_body_offline">Too much to decide right now? Pace picks one thing from your toolkit based on the hour and what has worked for you before.</string>
+    <string name="autopilot_strength_label">How strong is it, 1 to 5? (optional)</string>
+    <string name="autopilot_action">Choose for me</string>
+    <string name="autopilot_thinking">Choosing something for you…</string>
+    <string name="autopilot_start">Start it</string>
+    <string name="autopilot_another">Something else</string>
+    <string name="autopilot_rate_after">Nice. How strong is it now? One tap teaches the next pick what works for you.</string>
+    <string name="autopilot_skip_rating">Skip</string>
+    <string name="autopilot_reason_strong">When it is this loud, slowing your breathing works faster than anything that needs thinking.</string>
+    <string name="autopilot_reason_proven">Your own ratings say this one takes the edge off for you.</string>
+    <string name="autopilot_reason_late">Late in the day, something quiet that settles you beats something that wakes you up.</string>
+    <string name="autopilot_reason_move">You have not moved on purpose yet today, and three minutes on your feet changes the moment.</string>
+    <string name="autopilot_reason_fresh">Something fresh to get your head into for a few minutes.</string>
+
+    <!-- 0.3.0: Your go-tos -->
+    <string name="goto_title">Your go-tos</string>
+    <string name="goto_recent">Pick up again</string>
+    <string name="goto_helps">What helps you most</string>
+    <string name="goto_helps_empty">Rate a tool before and after (Pick for me asks for you) and Pace will show which ones actually take the edge off.</string>
+    <string name="goto_stat">Eases it by %1$s on average · %2$d rated</string>
+    <string name="goto_open">Open</string>
+
+    <!-- 0.3.0: Coach actions -->
+    <string name="coach_action_open">Open %1$s</string>
+    <string name="coach_starter_game">Play a game with me</string>
+    <string name="coach_starter_fact">Tell me something weird</string>
+
+    <!-- 0.3.0: Playbook -->
+    <string name="playbook_title">Playbook</string>
+    <string name="playbook_intro">Decide now, while it is calm. When the moment comes, the plan is already made and there is nothing left to argue with.</string>
+    <string name="playbook_yours">Your plans</string>
+    <string name="playbook_empty">No plans yet. Draft some with your coach or write your own below.</string>
+    <string name="playbook_remove">Remove plan</string>
+    <string name="playbook_draft_title">Draft with your coach</string>
+    <string name="playbook_draft_body">Your coach reads your hardest stretch, your situations and your values, then suggests plans that fit your actual day. Keep the ones that sound like you.</string>
+    <string name="playbook_draft">Draft three plans</string>
+    <string name="playbook_draft_more">Draft three more</string>
+    <string name="playbook_drafting">Thinking through your day…</string>
+    <string name="playbook_keep">Keep</string>
+    <string name="playbook_skip">Skip</string>
+    <string name="playbook_add_title">Write your own</string>
+    <string name="playbook_if_label">If…</string>
+    <string name="playbook_if_hint">it is 3pm and I am at my desk</string>
+    <string name="playbook_then_label">Then I will…</string>
+    <string name="playbook_then_hint">refill my water and walk the long way back</string>
+    <string name="playbook_add">Add plan</string>
+    <string name="playbook_full">You have %1$d plans, the most worth keeping. Remove one to add another.</string>
+    <string name="playbook_if">If</string>
+    <string name="playbook_then">then</string>
+    <string name="playbook_make">Make one</string>
+    <string name="playbook_edit">Edit</string>
+    <string name="playbook_card_empty">Decide in advance what you will do when your hardest moment arrives. Your coach can draft them for you.</string>
+    <string name="playbook_more">+%1$d more in your playbook</string>
 </resources>

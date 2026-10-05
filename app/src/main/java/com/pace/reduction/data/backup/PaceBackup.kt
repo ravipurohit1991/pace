@@ -51,6 +51,8 @@ data class PlanBackup(
     val themeMode: String,
     /** Defaulted so backups written before values existed still import. */
     val personalValues: List<String> = emptyList(),
+    /** Encoded if-then plans. Defaulted so backups written before the playbook existed still import. */
+    val ifThenPlans: List<String> = emptyList(),
     val drinkQuickLogEnabled: Boolean = true,
     val coffeeTrackingEnabled: Boolean = true,
     val alcoholTrackingEnabled: Boolean = true,
